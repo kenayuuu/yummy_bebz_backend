@@ -1,0 +1,40 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+
+class Menu extends Model
+{
+    use HasApiTokens, HasFactory, Notifiable;
+    protected $fillable = [
+        'nama_menu',
+        'deskripsi',
+        'harga',
+        'keuntungan',
+        'gambar',
+        'tanggal',
+        'waktu_mulai',
+        'waktu_selesai',
+        'status',
+    ];
+
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class);
+    }
+
+    public function cartItems(): HasMany
+    {
+        return $this->hasMany(CartItem::class);
+    }
+
+    public function ratings(): HasMany
+    {
+        return $this->hasMany(Rating::class);
+    }
+}

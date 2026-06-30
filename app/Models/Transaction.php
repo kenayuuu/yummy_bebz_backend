@@ -5,18 +5,21 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Transaction extends Model
 {
+    use HasFactory;
     protected $fillable = [
         'user_id',
         'cart_id',
-        'name',
+        'customer_name',
         'tanggal',
         'status',
         'metode_pembayaran',
         'total_jumlah',
         'total_harga',
+        'total_keuntungan',
     ];
 
     protected function casts(): array
@@ -40,5 +43,13 @@ class Transaction extends Model
     public function payment(): HasOne
     {
         return $this->hasOne(Payment::class);
+    }
+    public function details()
+    {
+        return $this->hasMany(TransactionDetail::class);
+    }
+    public function chats()
+    {
+        return $this->hasMany(Chat::class);
     }
 }

@@ -10,6 +10,10 @@ class TransactionFactory extends Factory
 {
     public function definition(): array
     {
+        $totalHarga = fake()->numberBetween(15000, 150000);
+
+        $totalKeuntungan = fake()->numberBetween(5000, 50000);
+
         return [
             'user_id' => User::inRandomOrder()->first()?->id,
 
@@ -23,17 +27,20 @@ class TransactionFactory extends Factory
                 'pending',
                 'paid',
                 'cancelled',
+                'completed',
             ]),
 
             'metode_pembayaran' => fake()->randomElement([
                 'cash',
-                'qris',
-                'transfer',
+                'transfer_bank',
+                'midtrans',
             ]),
 
             'total_jumlah' => fake()->numberBetween(1, 10),
 
-            'total_harga' => fake()->numberBetween(15000, 150000),
+            'total_harga' => $totalHarga,
+
+            'total_keuntungan' => min($totalKeuntungan, $totalHarga),
         ];
     }
 }

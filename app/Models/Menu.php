@@ -13,8 +13,10 @@ class Menu extends Model
     use HasApiTokens, HasFactory, Notifiable;
     protected $fillable = [
         'nama_menu',
+        'category',
         'deskripsi',
-        'harga',
+        'harga_modal',
+        'harga_jual',
         'keuntungan',
         'gambar',
         'tanggal',
@@ -36,5 +38,9 @@ class Menu extends Model
     public function ratings(): HasMany
     {
         return $this->hasMany(Rating::class);
+    }
+    public function transactionDetails()
+    {
+        return $this->hasMany(TransactionDetail::class);
     }
 }

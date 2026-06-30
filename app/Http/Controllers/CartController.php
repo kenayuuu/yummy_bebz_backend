@@ -19,7 +19,9 @@ class CartController extends Controller
             ->where('status', 'open')
             ->first();
 
-        return response()->json($cart ?? []);
+        return response()->json(
+            $cart?->load('items.menu')
+        );
     }
 
     public function store(Request $request)
@@ -35,14 +37,25 @@ class CartController extends Controller
             ['total_items' => 0, 'subtotal' => 0, 'total_price' => 0]
         );
 
-        $item = CartItem::updateOrCreate(
-            ['cart_id' => $cart->id, 'menu_id' => $menu->id],
-            [
+        $item = CartItem::where('cart_id', $cart->id)
+            ->where('menu_id', $menu->id)
+            ->first();
+
+        if ($item) {
+
+            $item->quantity += $validated['quantity'];
+            $item->total_price = $item->price * $item->quantity;
+            $item->save();
+        } else {
+
+            CartItem::create([
+                'cart_id' => $cart->id,
+                'menu_id' => $menu->id,
                 'price' => $menu->harga,
                 'quantity' => $validated['quantity'],
                 'total_price' => $menu->harga * $validated['quantity'],
-            ]
-        );
+            ]);
+        }
 
         $this->recalculateCart($cart);
 
@@ -100,14 +113,14 @@ class CartController extends Controller
 
         $validated = $request->validate([
             'metode_pembayaran' => ['required', 'string', 'max:100'],
-            'tanggal' => ['required', 'date'],
+            'tanggal' => ['nullable', 'date'],
         ]);
 
         $transaction = Transaction::create([
             'user_id' => $request->user()->id,
             'cart_id' => $cart->id,
             'name' => $request->user()->name,
-            'tanggal' => $validated['tanggal'],
+            'tanggal' => now(),
             'status' => 'pending',
             'metode_pembayaran' => $validated['metode_pembayaran'],
             'total_jumlah' => $cart->total_items,

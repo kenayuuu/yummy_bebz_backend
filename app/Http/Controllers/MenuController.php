@@ -20,14 +20,17 @@ class MenuController extends Controller
         $validated = $request->validate([
             'nama_menu' => ['required', 'string', 'max:255'],
             'deskripsi' => ['nullable', 'string'],
-            'harga' => ['required', 'numeric', 'min:0'],
-            'keuntungan' => ['required', 'numeric', 'min:0'],
+            'harga_modal' => ['required', 'numeric', 'min:0'],
+            'harga_jual' => ['required', 'numeric', 'min:0'],
             'gambar' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
             'tanggal' => ['nullable'],
             'waktu_mulai' => ['nullable'],
             'waktu_selesai' => ['nullable'],
             'status' => ['required', 'string', 'max:50'],
         ]);
+
+        $validated['keuntungan'] =
+            $validated['harga_jual'] - $validated['harga_modal'];
 
         if ($request->hasFile('gambar')) {
             $path = $request->file('gambar')->store('menus', 'public');
@@ -60,14 +63,19 @@ class MenuController extends Controller
         $validated = $request->validate([
             'nama_menu' => ['sometimes', 'string', 'max:255'],
             'deskripsi' => ['sometimes', 'nullable', 'string'],
-            'harga' => ['sometimes', 'numeric', 'min:0'],
-            'keuntungan' => ['sometimes', 'numeric', 'min:0'],
+            'harga_modal' => ['sometimes', 'numeric', 'min:0'],
+            'harga_jual' => ['sometimes', 'numeric', 'min:0'],
             'gambar' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
             'tanggal' => ['nullable'],
             'waktu_mulai' => ['nullable'],
             'waktu_selesai' => ['nullable'],
             'status' => ['sometimes', 'string', 'max:50'],
         ]);
+
+        $hargaModal = $validated['harga_modal'] ?? $menu->harga_modal;
+        $hargaJual = $validated['harga_jual'] ?? $menu->harga_jual;
+
+        $validated['keuntungan'] = $hargaJual - $hargaModal;
 
         if ($request->hasFile('gambar')) {
 

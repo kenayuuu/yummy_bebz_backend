@@ -21,6 +21,7 @@ class User extends Authenticatable
         'alamat',
         'no_hp',
         'profil',
+        'fcm_token',
     ];
 
     protected $hidden = [
@@ -59,5 +60,15 @@ class User extends Authenticatable
     public function notifications(): HasMany
     {
         return $this->hasMany(Notification::class);
+    }
+
+    public function sentChats()
+    {
+        return $this->hasMany(Chat::class, 'sender_id');
+    }
+
+    public function receivedChats()
+    {
+        return $this->hasMany(Chat::class, 'receiver_id');
     }
 }

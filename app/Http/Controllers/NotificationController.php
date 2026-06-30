@@ -9,9 +9,14 @@ class NotificationController extends Controller
 {
     public function index(Request $request)
     {
-        return response()->json(
-            Notification::where('user_id', $request->user()->id)->latest()->get()
-        );
+        return response()->json([
+            'data' => Notification::where('user_id', $request->user()->id)
+                ->latest()
+                ->get(),
+            'unread_count' => Notification::where('user_id', $request->user()->id)
+                ->where('is_read', 0)
+                ->count()
+        ]);
     }
 
     public function store(Request $request)
@@ -22,10 +27,12 @@ class NotificationController extends Controller
             'message' => ['required', 'string'],
             'type' => ['nullable', 'string', 'max:100'],
             'reference_id' => ['nullable', 'integer'],
-            'is_read' => ['nullable', 'boolean'],
         ]);
 
-        $notification = Notification::create($validated);
+        $notification = Notification::create([
+            ...$validated,
+            'is_read' => 0,
+        ]);
 
         return response()->json([
             'message' => 'Notifikasi berhasil dibuat.',
@@ -48,11 +55,9 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Notifikasi tidak ditemukan.'], 404);
         }
 
-        $validated = $request->validate([
-            'is_read' => ['required', 'boolean'],
+        $notification->update([
+            'is_read' => $request->boolean('is_read', true),
         ]);
-
-        $notification->update($validated);
 
         return response()->json([
             'message' => 'Status notifikasi diperbarui.',
@@ -60,12 +65,27 @@ class NotificationController extends Controller
         ]);
     }
 
-    public function destroy(Notification $notification)
+    public function destroy(Request $request, Notification $notification)
     {
+        if ($notification->user_id !== $request->user()->id) {
+            return response()->json(['message' => 'Notifikasi tidak ditemukan.'], 404);
+        }
+
         $notification->delete();
 
         return response()->json([
             'message' => 'Notifikasi berhasil dihapus.',
+        ]);
+    }
+
+    public function markAllRead(Request $request)
+    {
+        Notification::where('user_id', $request->user()->id)
+            ->where('is_read', 0)
+            ->update(['is_read' => 1]);
+
+        return response()->json([
+            'message' => 'Semua notifikasi sudah dibaca.'
         ]);
     }
 }

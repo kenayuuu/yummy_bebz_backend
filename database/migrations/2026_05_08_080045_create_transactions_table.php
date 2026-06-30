@@ -13,14 +13,28 @@ return new class extends Migration
     {
         Schema::create('transactions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('user_id')
+                ->nullable()
+                ->constrained()
+                ->nullOnDelete();
+            $table->string('customer_name')->nullable();
             $table->unsignedBigInteger('cart_id')->nullable();
             $table->string('name')->nullable();
             $table->date('tanggal');
-            $table->enum('status', ['pending', 'paid', 'cancelled', 'completed'])->default('pending');
-            $table->string('metode_pembayaran')->nullable();
+            $table->enum('status', [
+                'pending',
+                'paid',
+                'cancelled',
+                'completed'
+            ])->default('pending');
+            $table->enum('metode_pembayaran', [
+                'cash',
+                'transfer_bank',
+                'midtrans',
+            ])->nullable();
             $table->unsignedInteger('total_jumlah')->default(0);
             $table->decimal('total_harga', 12, 2)->default(0);
+            $table->decimal('total_keuntungan', 12, 2)->default(0);
             $table->timestamps();
         });
     }

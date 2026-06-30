@@ -17,6 +17,9 @@ return new class extends Migration
             $table->decimal('amount', 12, 2);
             $table->string('reference')->nullable();
             $table->timestamp('paid_at')->nullable();
+            $table->string('order_id')->nullable();
+            $table->string('snap_token')->nullable();
+            $table->string('transaction_id_midtrans')->nullable();
             $table->timestamps();
         });
     }

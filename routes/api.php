@@ -12,32 +12,21 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TransactionController;
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| AUTH
-|--------------------------------------------------------------------------
-*/
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
 
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
 });
+// SANCTUM
 
-/*
-|--------------------------------------------------------------------------
-| AUTHENTICATED ROUTES
-|--------------------------------------------------------------------------
-*/
 Route::middleware('auth:sanctum')->group(function () {
-
-    // AUTH
     Route::post('/auth/logout', [AuthController::class, 'logout']);
-
-    // PROFILE
     Route::get('/profile', [ProfileController::class, 'show']);
+    Route::get('/user/{id}/profile', [ProfileController::class, 'getPublicProfile']);
     Route::put('/profile', [ProfileController::class, 'update']);
-
-    // CHAT
     Route::get('/chats', [ChatController::class, 'index']);
     Route::post('/chats', [ChatController::class, 'store']);
     Route::post('/chats/send', [ChatController::class, 'send']);
@@ -46,79 +35,47 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // FCM TOKEN
     Route::post('/fcm-token', [ProfileController::class, 'saveFcmToken']);
-
-    // MENUS (public after login)
     Route::get('/menus', [MenuController::class, 'index']);
     Route::get('/menus/{menu}', [MenuController::class, 'show']);
-
-    // TRANSACTIONS
     Route::get('/transactions', [TransactionController::class, 'index']);
     Route::get('/transactions/{transaction}', [TransactionController::class, 'show']);
-
-    // Notifications
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::patch('/notifications/{id}/read', [NotificationController::class, 'read']);
-
-    // list chat room (akan kita pakai untuk owner/customer nanti)
     Route::get('/chat-rooms', [ChatController::class, 'rooms']);
-
-    // get messages in 1 room
     Route::get('/chats', [ChatController::class, 'index']);
-
-    // send message
     Route::post('/chats', [ChatController::class, 'send']);
-
-    /*
-    |--------------------------------------------------------------------------
-    | NOTIFICATIONS
-    |--------------------------------------------------------------------------
-    */
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/{notification}', [NotificationController::class, 'show']);
     Route::patch('/notifications/{notification}/read', [NotificationController::class, 'update']);
+    Route::apiResource('ratings', RatingController::class)
+        ->only(['index', 'store', 'show', 'update', 'destroy']);
 
     Route::middleware('role:owner')->group(function () {
-
         Route::apiResource('menus', MenuController::class)
             ->except(['index', 'show']);
-
         Route::apiResource('transactions', TransactionController::class)
-            ->except(['store']);
-
+            ->except(['index', 'show', 'store']);
+        Route::post('/transactions/offline', [TransactionController::class, 'storeOffline']);
+        Route::put('/transactions/{transaction}', [TransactionController::class, 'update']);
+        Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy']);
+        Route::get('/owner/transactions/{transaction}', [TransactionController::class, 'show']);
         Route::post('/notifications', [NotificationController::class, 'store']);
         Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
-
         Route::get('/reports', [ReportController::class, 'index']);
-
         Route::get('/reports/pdf', [ReportController::class, 'exportPdf']);
-
-        // 🔥 OPTIONAL (kalau mau lebih clean chat owner)
         Route::get('/owner/chat-rooms', [ChatController::class, 'chatRooms']);
     });
 
-    /*
-    |--------------------------------------------------------------------------
-    | CUSTOMER ONLY
-    |--------------------------------------------------------------------------
-    */
+    // CUSTOMER
     Route::middleware('role:customer')->group(function () {
-
-        // CART
         Route::get('/cart', [CartController::class, 'index']);
         Route::post('/cart/items', [CartController::class, 'store']);
         Route::patch('/cart/items/{cartItem}', [CartController::class, 'update']);
         Route::delete('/cart/items/{cartItem}', [CartController::class, 'destroy']);
         Route::post('/cart/checkout', [CartController::class, 'checkout']);
-
-        // PAYMENTS
         Route::get('/payments', [PaymentController::class, 'index']);
         Route::get('/payments/{payment}', [PaymentController::class, 'show']);
-
-        // TRANSACTION ACTION
+        Route::post('/transactions', [TransactionController::class, 'store']);
         Route::post('/transactions/{transaction}/cancel', [TransactionController::class, 'cancel']);
-
-        // RATINGS
-        Route::apiResource('ratings', RatingController::class)
-            ->only(['index', 'store', 'show', 'update', 'destroy']);
     });
 });

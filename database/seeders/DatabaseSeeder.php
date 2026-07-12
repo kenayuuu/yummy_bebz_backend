@@ -30,9 +30,17 @@ class DatabaseSeeder extends Seeder
                 'email' => 'cipin@gmail.com',
                 'password' => bcrypt('password'),
                 'role' => 'customer',
-            ]
+            ],
         );
 
+        User::factory()->create(
+            [
+                'name' => 'niken',
+                'email' => 'nikena608@gmail.com',
+                'password' => bcrypt('password'),
+                'role' => 'customer',
+            ],
+        );
 
         $this->call([
             MenuSeeder::class,

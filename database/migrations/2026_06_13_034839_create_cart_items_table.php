@@ -16,8 +16,6 @@ return new class extends Migration
             $table->decimal('price', 12, 2);
             $table->decimal('total_price', 12, 2);
             $table->timestamps();
-
-            $table->unique(['cart_id', 'menu_id']);
         });
     }
 

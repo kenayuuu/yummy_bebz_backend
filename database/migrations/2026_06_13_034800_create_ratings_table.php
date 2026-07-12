@@ -15,6 +15,10 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->foreignId('menu_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('transaction_id')
+                ->nullable()
+                ->constrained('transactions')
+                ->cascadeOnDelete();
             $table->unsignedTinyInteger('rating');
             $table->text('komentar')->nullable();
             $table->timestamps();

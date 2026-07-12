@@ -5,14 +5,20 @@ namespace App\Http\Controllers;
 use App\Models\Menu;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class MenuController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        Log::info('MASUK MENU CONTROLLER');
+
         $menus = Menu::latest()->get();
 
         return response()->json($menus);
+        // $menus = Menu::latest()->get();
+
+        // return response()->json($menus);
     }
 
     public function store(Request $request)

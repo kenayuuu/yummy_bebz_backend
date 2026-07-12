@@ -9,15 +9,18 @@ class RatingController extends Controller
 {
     public function index()
     {
-        return response()->json(
-            Rating::with(['user', 'menu'])->latest()->get()
-        );
+        $ratings = Rating::with(['user', 'menu'])
+            ->latest()
+            ->get();
+
+        return response()->json($ratings);
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
             'menu_id' => ['required', 'exists:menus,id'],
+            'transaction_id' => ['required', 'exists:transactions,id'],
             'rating' => ['required', 'integer', 'between:1,5'],
             'komentar' => ['nullable', 'string'],
         ]);

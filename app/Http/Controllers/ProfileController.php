@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Http\Request;
 
@@ -46,7 +47,7 @@ class ProfileController extends Controller
             'message' => 'Profil berhasil diperbarui.',
             'user' => $user->fresh(),
         ]);
-    }   
+    }
 
     public function saveFcmToken(Request $request)
     {
@@ -65,22 +66,23 @@ class ProfileController extends Controller
         ]);
     }
 
-    // public function saveFcmToken(Request $request)
-    // {
-    //     $request->validate([
-    //         'fcm_token' => 'required|string',
-    //     ]);
+    public function getPublicProfile($id)
+    {
+        // Cari user berdasarkan ID, jika tidak ada kirim error 404
+        $user = User::find($id);
 
-    //     $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'message' => 'User tidak ditemukan'
+            ], 404);
+        }
 
-    //     \Log::info("SAVE TOKEN USER {$user->id}");
-    //     \Log::info($request->fcm_token);
-
-    //     $user->fcm_token = $request->fcm_token;
-    //     $user->save();
-
-    //     return response()->json([
-    //         'message' => 'success'
-    //     ]);
-    // }
+        // Kembalikan data yang dibutuhkan saja (untuk keamanan)
+        return response()->json([
+            'id' => $user->id,
+            'name' => $user->name,
+            'role' => $user->role,
+            'profil' => $user->profil, // URL foto profil owner dari database
+        ], 200);
+    }
 }

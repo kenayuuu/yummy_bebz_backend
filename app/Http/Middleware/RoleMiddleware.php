@@ -17,6 +17,12 @@ class RoleMiddleware
     {
         $user = $request->user();
 
+        \Log::info('ROLE MIDDLEWARE', [
+            'url' => $request->path(),
+            'user_role' => $user?->role,
+            'allowed_roles' => $roles,
+        ]);
+
         if (! $user || ! in_array($user->role, $roles, true)) {
             return response()->json([
                 'message' => 'Anda tidak memiliki hak akses.',

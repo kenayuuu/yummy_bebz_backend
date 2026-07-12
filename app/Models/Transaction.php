@@ -52,4 +52,8 @@ class Transaction extends Model
     {
         return $this->hasMany(Chat::class);
     }
+    public function rating(): HasOne
+    {
+        return $this->hasOne(Rating::class, 'transaction_id');
+    }
 }

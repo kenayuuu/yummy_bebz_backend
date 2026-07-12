@@ -23,7 +23,7 @@ return new class extends Migration
             $table->text('deskripsi')->nullable();
             $table->decimal('harga_modal', 12, 2);
             $table->decimal('harga_jual', 12, 2);
-            $table->decimal('keuntungan', 12, 2);
+            $table->decimal('keuntungan', 12, 2)->default(0);
             $table->string('gambar')->nullable();
             $table->string('tanggal')->nullable();
             $table->string('waktu_mulai')->nullable();

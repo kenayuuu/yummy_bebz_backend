@@ -26,14 +26,27 @@ class CartController extends Controller
 
     public function store(Request $request)
     {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json(['message' => 'Unauthorized'], 401);
+        }
+
         $validated = $request->validate([
             'menu_id' => ['required', 'exists:menus,id'],
             'quantity' => ['required', 'integer', 'min:1'],
         ]);
 
-        $menu = Menu::findOrFail($validated['menu_id']);
+        $menu = Menu::find($validated['menu_id']);
+
+        if (!$menu) {
+            return response()->json(['message' => 'Menu tidak ditemukan'], 404);
+        }
+
+        $price = $menu->harga_jual;
+
         $cart = Cart::firstOrCreate(
-            ['user_id' => $request->user()->id, 'status' => 'open'],
+            ['user_id' => $user->id, 'status' => 'open'],
             ['total_items' => 0, 'subtotal' => 0, 'total_price' => 0]
         );
 
@@ -42,27 +55,25 @@ class CartController extends Controller
             ->first();
 
         if ($item) {
-
             $item->quantity += $validated['quantity'];
-            $item->total_price = $item->price * $item->quantity;
+            $item->total_price = $price * $item->quantity;
             $item->save();
         } else {
-
             CartItem::create([
                 'cart_id' => $cart->id,
                 'menu_id' => $menu->id,
-                'price' => $menu->harga,
+                'price' => $price,
                 'quantity' => $validated['quantity'],
-                'total_price' => $menu->harga * $validated['quantity'],
+                'total_price' => $price * $validated['quantity'],
             ]);
         }
 
         $this->recalculateCart($cart);
 
         return response()->json([
-            'message' => 'Menu berhasil ditambahkan ke keranjang.',
+            'message' => 'Menu berhasil ditambahkan ke keranjang',
             'cart' => $cart->load('items.menu'),
-        ], Response::HTTP_CREATED);
+        ], 201);
     }
 
     public function update(Request $request, CartItem $cartItem)
@@ -146,10 +157,8 @@ class CartController extends Controller
 
     protected function recalculateCart(Cart $cart): void
     {
-        $cart->refresh();
-
-        $totalItems = $cart->items()->sum('quantity');
-        $subtotal = $cart->items()->sum('total_price');
+        $totalItems = $cart->items()->sum('quantity') ?? 0;
+        $subtotal = $cart->items()->sum('total_price') ?? 0;
 
         $cart->update([
             'total_items' => $totalItems,

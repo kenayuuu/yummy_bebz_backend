@@ -19,10 +19,15 @@ class ChatController extends Controller
 
         $userId = auth()->id();
 
-        return Chat::where(function ($q) use ($userId, $request) {
-            $q->where('sender_id', $userId)
-                ->where('receiver_id', $request->receiver_id);
-        })
+        return Chat::query()
+            ->with([
+                'sender:id,name,profil',
+                'receiver:id,name,profil',
+            ])
+            ->where(function ($q) use ($userId, $request) {
+                $q->where('sender_id', $userId)
+                    ->where('receiver_id', $request->receiver_id);
+            })
             ->orWhere(function ($q) use ($userId, $request) {
                 $q->where('sender_id', $request->receiver_id)
                     ->where('receiver_id', $userId);

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Cart;
 use App\Models\Payment;
+use App\Models\Menu;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use App\Models\TransactionDetail;
@@ -12,91 +13,235 @@ class TransactionController extends Controller
 {
     public function index(Request $request)
     {
+        $user = $request->user();
         $query = Transaction::with([
-            'user',
-            'payment',
-            'cart.items.menu',
             'details.menu',
-        ])->latest();
+            'payment',
+            'rating'
+        ]);
 
-        if ($request->user()->role === 'customer') {
-            $query->where('user_id', $request->user()->id);
+        if ($user->role === 'customer') {
+            $query->where('user_id', $user->id);
         }
 
-        return response()->json($query->get());
+        $transactions = $query
+            ->latest()
+            ->get();
+
+        return response()->json($transactions);
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'cart_id' => ['sometimes', 'exists:carts,id'],
-            'tanggal' => ['required', 'date'],
-            'metode_pembayaran' => ['required', 'string', 'max:100'],
+            'cart_id' => [
+                'nullable',
+                'exists:carts,id'
+            ],
+            'customer_name' => [
+                'nullable',
+                'string'
+            ],
+            'tanggal' => [
+                'required',
+                'date'
+            ],
+            'metode_pembayaran' => [
+                'required',
+                'in:cash,midtrans'
+            ],
+            'details' => [
+                'nullable',
+                'array',
+                'min:1'
+            ],
+            'details.*.menu_id' => [
+                'required_without:cart_id',
+                'exists:menus,id'
+            ],
+            'details.*.quantity' => [
+                'required_without:cart_id',
+                'integer',
+                'min:1'
+            ],
+            'details.*.harga' => [
+                'nullable',
+                'numeric'
+            ],
         ]);
 
-        $cart = Cart::with('items.menu')
-            ->when(
-                isset($validated['cart_id']),
-                fn($query) => $query->where('id', $validated['cart_id'])
-            )
-            ->where('user_id', $request->user()->id)
-            ->where('status', 'open')
-            ->firstOrFail();
+        // Ambil waktu saat ini berdasarkan timezone server
+        $currentTime = now()->format('H:i:s');
 
-        $totalKeuntungan = $cart->items->sum(function ($item) {
-            return (($item->menu->keuntungan ?? 0) * $item->quantity);
-        });
+        // ==========================================
+        // ALUR 1: CHECKOUT DARI CART
+        // ==========================================
+        if (!empty($validated['cart_id'])) {
+
+            $cart = Cart::with('items.menu')
+                ->where('id', $validated['cart_id'])
+                ->where('user_id', $request->user()->id)
+                ->where('status', 'open')
+                ->firstOrFail();
+
+            // 🛡️ VALIDASI JADWAL MENU DI DALAM CART
+            foreach ($cart->items as $item) {
+                $menu = $item->menu;
+                if ($menu && $menu->waktu_mulai && $menu->waktu_selesai) {
+                    if ($currentTime < $menu->waktu_mulai || $currentTime > $menu->waktu_selesai) {
+                        return response()->json([
+                            'message' => "Menu '{$menu->nama_menu}' saat ini sedang tidak tersedia atau di luar jam operasional.",
+                            'errors' => ['menu' => ["Menu '{$menu->nama_menu}' hanya tersedia pada jam {$menu->waktu_mulai} - {$menu->waktu_selesai}."]]
+                        ], 422);
+                    }
+                }
+            }
+
+            $totalKeuntungan = 0;
+
+            foreach ($cart->items as $item) {
+                $totalKeuntungan +=
+                    ($item->menu->keuntungan ?? 0)
+                    * $item->quantity;
+            }
+
+            $transaction = Transaction::create([
+                'user_id' => $request->user()->id,
+                'cart_id' => $cart->id,
+                'customer_name' => $validated['customer_name']  ?? $request->user()->name,
+                'tanggal' => $validated['tanggal'],
+                'status' => 'pending',
+                'metode_pembayaran' => $validated['metode_pembayaran'],
+                'total_jumlah' => $cart->total_items,
+                'total_harga' => $cart->total_price,
+                'total_keuntungan' => $totalKeuntungan,
+            ]);
+
+            foreach ($cart->items as $item) {
+                TransactionDetail::create([
+                    'transaction_id' => $transaction->id,
+                    'menu_id' => $item->menu_id,
+                    'quantity' => $item->quantity,
+                    'harga_satuan' => $item->price,
+                    'keuntungan_satuan' => $item->menu->keuntungan ?? 0,
+                    'subtotal' => $item->total_price,
+                    'subtotal_keuntungan' => ($item->menu->keuntungan ?? 0)  * $item->quantity,
+                ]);
+            }
+
+            Payment::create([
+                'user_id' =>  $request->user()->id,
+                'transaction_id' => $transaction->id,
+                'metode_pembayaran' =>  $validated['metode_pembayaran'],
+                'amount' => $cart->total_price,
+                'status' => 'pending',
+            ]);
+
+            $cart->update([
+                'status' => 'checked_out'
+            ]);
+
+            return response()->json([
+                'message' => 'Transaksi berhasil dibuat.',
+                'data' => $transaction->load([
+                    'payment',
+                    'details.menu',
+                    'user'
+                ]),
+            ], 201);
+        }
+
+        // ==========================================
+        // ALUR 2: PEMBELIAN LANGSUNG ("PESAN SEKARANG")
+        // ==========================================
+
+        // 🛡️ VALIDASI JADWAL MENU SEBELUM PROSES HITUNG
+        foreach ($validated['details'] as $detail) {
+            $menu = Menu::findOrFail($detail['menu_id']);
+
+            if ($menu->waktu_mulai && $menu->waktu_selesai) {
+                if ($currentTime < $menu->waktu_mulai || $currentTime > $menu->waktu_selesai) {
+                    return response()->json([
+                        'message' => "Menu '{$menu->nama_menu}' saat ini sedang tidak tersedia atau di luar jam operasional.",
+                        'errors' => ['menu' => ["Menu '{$menu->nama_menu}' hanya tersedia pada jam {$menu->waktu_mulai} - {$menu->waktu_selesai}."]]
+                    ], 422);
+                }
+            }
+        }
+
+        $totalJumlah = 0;
+        $totalHarga = 0;
+        $totalKeuntungan = 0;
+
+        foreach ($validated['details'] as $detail) {
+            $menu = Menu::findOrFail(
+                $detail['menu_id']
+            );
+            $qty = $detail['quantity'];
+            $subtotal = $menu->harga_jual * $qty;
+            $keuntungan = $menu->keuntungan * $qty;
+            $totalJumlah += $qty;
+            $totalHarga += $subtotal;
+            $totalKeuntungan += $keuntungan;
+        }
 
         $transaction = Transaction::create([
             'user_id' => $request->user()->id,
-            'cart_id' => $cart->id,
-            'name' => $request->user()->name,
+            'cart_id' => null,
+            'customer_name' => $validated['customer_name']  ?? $request->user()->name,
             'tanggal' => $validated['tanggal'],
             'status' => 'pending',
             'metode_pembayaran' => $validated['metode_pembayaran'],
-            'total_jumlah' => $cart->total_items,
-            'total_harga' => $cart->total_price,
+            'total_jumlah' => $totalJumlah,
+            'total_harga' => $totalHarga,
             'total_keuntungan' => $totalKeuntungan,
         ]);
 
-        $payment = Payment::create([
+        foreach ($validated['details'] as $detail) {
+            $menu = Menu::findOrFail(
+                $detail['menu_id']
+            );
+
+            $qty = $detail['quantity'];
+            TransactionDetail::create([
+                'transaction_id' => $transaction->id,
+                'menu_id' => $menu->id,
+                'quantity' => $qty,
+                'harga_satuan' => $menu->harga_jual,
+                'keuntungan_satuan' => $menu->keuntungan,
+                'subtotal' => $menu->harga_jual * $qty,
+                'subtotal_keuntungan' => $menu->keuntungan * $qty,
+            ]);
+        }
+
+        Payment::create([
             'user_id' => $request->user()->id,
             'transaction_id' => $transaction->id,
             'metode_pembayaran' => $validated['metode_pembayaran'],
-            'amount' => $cart->total_price,
+            'amount' => $totalHarga,
             'status' => 'pending',
-        ]);
-
-        $cart->update([
-            'status' => 'checked_out'
         ]);
 
         return response()->json([
             'message' => 'Transaksi berhasil dibuat.',
             'data' => $transaction->load([
-                'cart.items.menu',
-                'details.menu',
                 'payment',
+                'details.menu',
                 'user'
             ]),
-            'payment' => $payment,
         ], 201);
     }
 
-    //Transaksi Offline (Owner)
     public function storeOffline(Request $request)
     {
         $validated = $request->validate([
-            'customer_name' => ['required', 'string', 'max:255'],
+            'name' => ['required', 'string', 'max:255'],
             'tanggal' => ['required', 'date'],
             'metode_pembayaran' => ['required', 'string'],
-
             'total_jumlah' => ['required', 'integer'],
             'total_harga' => ['required', 'numeric'],
             'total_keuntungan' => ['required', 'numeric'],
-
             'items' => ['required', 'array', 'min:1'],
-
             'items.*.menu_id' => ['required', 'exists:menus,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.harga_satuan' => ['required', 'numeric'],
@@ -106,7 +251,7 @@ class TransactionController extends Controller
         $transaction = Transaction::create([
             'user_id' => null,
             'cart_id' => null,
-            'name' => $validated['customer_name'],
+            'name' => $validated['name'],
             'tanggal' => $validated['tanggal'],
             'status' => 'paid',
             'metode_pembayaran' => $validated['metode_pembayaran'],
@@ -119,22 +264,12 @@ class TransactionController extends Controller
 
             TransactionDetail::create([
                 'transaction_id' => $transaction->id,
-
                 'menu_id' => $item['menu_id'],
-
                 'quantity' => $item['quantity'],
-
                 'harga_satuan' => $item['harga_satuan'],
-
                 'keuntungan_satuan' => $item['keuntungan_satuan'],
-
-                'subtotal' =>
-                $item['harga_satuan'] *
-                    $item['quantity'],
-
-                'subtotal_keuntungan' =>
-                $item['keuntungan_satuan'] *
-                    $item['quantity'],
+                'subtotal' => $item['harga_satuan'] * $item['quantity'],
+                'subtotal_keuntungan' => $item['keuntungan_satuan'] * $item['quantity'],
             ]);
         }
 
@@ -170,28 +305,38 @@ class TransactionController extends Controller
     public function update(Request $request, Transaction $transaction)
     {
         $validated = $request->validate([
-            'tanggal' => ['sometimes', 'date'],
+            'customer_name'     => ['sometimes', 'string', 'max:255'],
+            'tanggal'           => ['sometimes', 'date'],
             'metode_pembayaran' => ['sometimes', 'string', 'max:100'],
-            'status' => ['sometimes', 'in:pending,paid,cancelled,completed'],
+            'total_jumlah'      => ['sometimes', 'integer'],
+            'total_harga'       => ['sometimes', 'numeric'],
+            'total_keuntungan'  => ['sometimes', 'numeric'],
+            'status_pembayaran' => ['sometimes', 'string', 'in:pending,paid,cancelled,failed'],
         ]);
 
-        if (
-            $transaction->payment &&
-            $transaction->payment->status === 'paid'
-        ) {
-            return response()->json([
-                'message' => 'Transaksi yang sudah dibayar tidak dapat diubah.'
-            ], 422);
-        }
+        $transaction->update([
+            'customer_name'     => $request->input('customer_name', $transaction->customer_name),
+            'tanggal'           => $request->input('tanggal', $transaction->tanggal),
+            'metode_pembayaran' => $request->input('metode_pembayaran', $transaction->metode_pembayaran),
+            'total_jumlah'      => $request->input('total_jumlah', $transaction->total_jumlah),
+            'total_harga'       => $request->input('total_harga', $transaction->total_harga),
+            'total_keuntungan'  => $request->input('total_keuntungan', $transaction->total_keuntungan),
+        ]);
 
-        $transaction->update($validated);
+        if ($request->has('status_pembayaran')) {
+            if ($transaction->payment) {
+                $transaction->payment->update([
+                    'status' => $request->status_pembayaran,
+                ]);
+            }
+        }
 
         return response()->json([
             'message' => 'Transaksi berhasil diperbarui.',
             'data' => $transaction->fresh()->load([
                 'user',
                 'payment',
-                'cart.items.menu'
+                'details.menu' // Sesuaikan jika relasinya bernama 'details' atau 'cart.items.menu'
             ]),
         ]);
     }

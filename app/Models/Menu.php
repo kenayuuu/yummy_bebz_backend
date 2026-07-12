@@ -10,7 +10,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 class Menu extends Model
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasFactory, Notifiable;
     protected $fillable = [
         'nama_menu',
         'category',

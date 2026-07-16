@@ -15,6 +15,9 @@ class Payment extends Model
         'status',
         'reference',
         'paid_at',
+        'order_id',
+        'snap_token',
+        'transaction_id_midtrans',
     ];
 
     protected function casts(): array

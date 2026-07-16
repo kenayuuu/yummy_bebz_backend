@@ -23,6 +23,7 @@ return new class extends Migration
             $table->date('tanggal');
             $table->enum('status', [
                 'pending',
+                'processing',
                 'paid',
                 'cancelled',
                 'completed'

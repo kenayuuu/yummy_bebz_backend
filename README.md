@@ -1,3 +1,23 @@
+## php artisan serve --host=192.168.1.41 --port=8000
+
+## php artisan serve --host=192.168.254.100 --port=8000
+
+## ngrok http http://192.168.1.41:8000
+
+## test@example.com cipin@gmail.com .
+
+## git init
+
+## git add .
+
+## git commit -m "Initial commit"
+
+## git remote add origin (link git)
+
+## git branch -M main
+
+## git push -u origin main
+
 <p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Red Laravel logo lockup centered on a white page, showing the stylized Laravel brand name with a polished, professional tone"></a></p>
 
 <p align="center">

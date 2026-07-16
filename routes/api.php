@@ -15,6 +15,12 @@ use Illuminate\Support\Facades\Route;
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+Route::post('/payments/notification', [PaymentController::class, 'notification']);
+Route::get('/payments/success', function () {
+    return response()->json([
+        'message' => 'Payment success'
+    ]);
+});
 
 Route::prefix('auth')->group(function () {
     Route::post('/register', [AuthController::class, 'register']);
@@ -32,8 +38,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chats/send', [ChatController::class, 'send']);
     Route::get('/chat-rooms', [ChatController::class, 'rooms']);
     Route::post('/chats/mark-read/{senderId}', [ChatController::class, 'markAsRead']);
-
-    // FCM TOKEN
     Route::post('/fcm-token', [ProfileController::class, 'saveFcmToken']);
     Route::get('/menus', [MenuController::class, 'index']);
     Route::get('/menus/{menu}', [MenuController::class, 'show']);
@@ -58,6 +62,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/transactions/offline', [TransactionController::class, 'storeOffline']);
         Route::put('/transactions/{transaction}', [TransactionController::class, 'update']);
         Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy']);
+        Route::post('/transactions/{transaction}/accept', [TransactionController::class, 'accept']);
+        Route::post('/transactions/{transaction}/owner-cancel', [TransactionController::class, 'ownerCancel']);
         Route::get('/owner/transactions/{transaction}', [TransactionController::class, 'show']);
         Route::post('/notifications', [NotificationController::class, 'store']);
         Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
@@ -75,6 +81,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/cart/checkout', [CartController::class, 'checkout']);
         Route::get('/payments', [PaymentController::class, 'index']);
         Route::get('/payments/{payment}', [PaymentController::class, 'show']);
+        // generate snap token
+        Route::post('/payments/{transaction}/snap', [PaymentController::class, 'snap']);
         Route::post('/transactions', [TransactionController::class, 'store']);
         Route::post('/transactions/{transaction}/cancel', [TransactionController::class, 'cancel']);
     });

@@ -13,12 +13,22 @@ class MenuController extends Controller
     {
         Log::info('MASUK MENU CONTROLLER');
 
-        $menus = Menu::latest()->get();
+        $menus = Menu::withAvg('ratings', 'rating')
+            ->where('status', 'available')
+            ->latest()
+            ->get();
+
+        $menus->each(function ($menu) {
+            $menu->rating = round($menu->ratings_avg_rating ?? 0, 1);
+        });
+
+        foreach ($menus as $menu) {
+            if ($menu->gambar && !str_starts_with($menu->gambar, 'http')) {
+                $menu->gambar = asset('storage/' . $menu->gambar);
+            }
+        }
 
         return response()->json($menus);
-        // $menus = Menu::latest()->get();
-
-        // return response()->json($menus);
     }
 
     public function store(Request $request)

@@ -20,6 +20,7 @@ class Transaction extends Model
         'total_jumlah',
         'total_harga',
         'total_keuntungan',
+        'status',
     ];
 
     protected function casts(): array
@@ -27,6 +28,7 @@ class Transaction extends Model
         return [
             'tanggal' => 'date',
             'total_harga' => 'decimal:2',
+            'status' => 'string',
         ];
     }
 
@@ -46,7 +48,7 @@ class Transaction extends Model
     }
     public function details()
     {
-        return $this->hasMany(TransactionDetail::class);
+        return $this->hasMany(TransactionDetail::class, 'transaction_id');
     }
     public function chats()
     {

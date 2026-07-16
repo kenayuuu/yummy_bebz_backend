@@ -44,7 +44,7 @@ class TransactionController extends Controller
             ],
             'tanggal' => [
                 'required',
-                'date'
+                'string'
             ],
             'metode_pembayaran' => [
                 'required',
@@ -70,12 +70,22 @@ class TransactionController extends Controller
             ],
         ]);
 
-        // Ambil waktu saat ini berdasarkan timezone server
-        $currentTime = now()->format('H:i:s');
+        $currentTime = now()->timezone('Asia/Jakarta')->format('H:i:s');
 
-        // ==========================================
-        // ALUR 1: CHECKOUT DARI CART
-        // ==========================================
+        $tanggalInput = $request->input('tanggal');
+        if ($tanggalInput) {
+            $cleanDate = rawurldecode($tanggalInput);
+            if (str_contains($cleanDate, 'T')) {
+                $cleanDate = explode('T', $cleanDate)[0];
+            } elseif (str_contains($cleanDate, ' ')) {
+                $cleanDate = explode(' ', $cleanDate)[0];
+            }
+            $tanggalFix = trim($cleanDate);
+        } else {
+            $tanggalFix = now()->timezone('Asia/Jakarta')->format('Y-m-d');
+        }
+
+        // CHECKOUT DARI CART
         if (!empty($validated['cart_id'])) {
 
             $cart = Cart::with('items.menu')
@@ -84,7 +94,6 @@ class TransactionController extends Controller
                 ->where('status', 'open')
                 ->firstOrFail();
 
-            // 🛡️ VALIDASI JADWAL MENU DI DALAM CART
             foreach ($cart->items as $item) {
                 $menu = $item->menu;
                 if ($menu && $menu->waktu_mulai && $menu->waktu_selesai) {
@@ -108,8 +117,8 @@ class TransactionController extends Controller
             $transaction = Transaction::create([
                 'user_id' => $request->user()->id,
                 'cart_id' => $cart->id,
-                'customer_name' => $validated['customer_name']  ?? $request->user()->name,
-                'tanggal' => $validated['tanggal'],
+                'customer_name' => $validated['customer_name'] ?? $request->user()->name,
+                'tanggal' => $tanggalFix,
                 'status' => 'pending',
                 'metode_pembayaran' => $validated['metode_pembayaran'],
                 'total_jumlah' => $cart->total_items,
@@ -125,7 +134,7 @@ class TransactionController extends Controller
                     'harga_satuan' => $item->price,
                     'keuntungan_satuan' => $item->menu->keuntungan ?? 0,
                     'subtotal' => $item->total_price,
-                    'subtotal_keuntungan' => ($item->menu->keuntungan ?? 0)  * $item->quantity,
+                    'subtotal_keuntungan' => ($item->menu->keuntungan ?? 0) * $item->quantity,
                 ]);
             }
 
@@ -151,11 +160,6 @@ class TransactionController extends Controller
             ], 201);
         }
 
-        // ==========================================
-        // ALUR 2: PEMBELIAN LANGSUNG ("PESAN SEKARANG")
-        // ==========================================
-
-        // 🛡️ VALIDASI JADWAL MENU SEBELUM PROSES HITUNG
         foreach ($validated['details'] as $detail) {
             $menu = Menu::findOrFail($detail['menu_id']);
 
@@ -174,9 +178,7 @@ class TransactionController extends Controller
         $totalKeuntungan = 0;
 
         foreach ($validated['details'] as $detail) {
-            $menu = Menu::findOrFail(
-                $detail['menu_id']
-            );
+            $menu = Menu::findOrFail($detail['menu_id']);
             $qty = $detail['quantity'];
             $subtotal = $menu->harga_jual * $qty;
             $keuntungan = $menu->keuntungan * $qty;
@@ -188,8 +190,8 @@ class TransactionController extends Controller
         $transaction = Transaction::create([
             'user_id' => $request->user()->id,
             'cart_id' => null,
-            'customer_name' => $validated['customer_name']  ?? $request->user()->name,
-            'tanggal' => $validated['tanggal'],
+            'customer_name' => $validated['customer_name'] ?? $request->user()->name,
+            'tanggal' => $tanggalFix,
             'status' => 'pending',
             'metode_pembayaran' => $validated['metode_pembayaran'],
             'total_jumlah' => $totalJumlah,
@@ -198,11 +200,9 @@ class TransactionController extends Controller
         ]);
 
         foreach ($validated['details'] as $detail) {
-            $menu = Menu::findOrFail(
-                $detail['menu_id']
-            );
-
+            $menu = Menu::findOrFail($detail['menu_id']);
             $qty = $detail['quantity'];
+
             TransactionDetail::create([
                 'transaction_id' => $transaction->id,
                 'menu_id' => $menu->id,
@@ -306,27 +306,51 @@ class TransactionController extends Controller
     {
         $validated = $request->validate([
             'customer_name'     => ['sometimes', 'string', 'max:255'],
-            'tanggal'           => ['sometimes', 'date'],
+            'tanggal'           => ['sometimes'],
             'metode_pembayaran' => ['sometimes', 'string', 'max:100'],
             'total_jumlah'      => ['sometimes', 'integer'],
             'total_harga'       => ['sometimes', 'numeric'],
             'total_keuntungan'  => ['sometimes', 'numeric'],
-            'status_pembayaran' => ['sometimes', 'string', 'in:pending,paid,cancelled,failed'],
+            'paymentStatus'     => ['sometimes', 'string', 'in:pending,paid,cancelled,failed'],
         ]);
 
-        $transaction->update([
+        $updateData = [
             'customer_name'     => $request->input('customer_name', $transaction->customer_name),
-            'tanggal'           => $request->input('tanggal', $transaction->tanggal),
             'metode_pembayaran' => $request->input('metode_pembayaran', $transaction->metode_pembayaran),
             'total_jumlah'      => $request->input('total_jumlah', $transaction->total_jumlah),
             'total_harga'       => $request->input('total_harga', $transaction->total_harga),
             'total_keuntungan'  => $request->input('total_keuntungan', $transaction->total_keuntungan),
-        ]);
+        ];
 
-        if ($request->has('status_pembayaran')) {
+        if ($request->filled('tanggal')) {
+            $cleanDate = rawurldecode($request->tanggal);
+            if (str_contains($cleanDate, 'T')) {
+                $cleanDate = explode('T', $cleanDate)[0];
+            } elseif (str_contains($cleanDate, ' ')) {
+                $cleanDate = explode(' ', $cleanDate)[0];
+            }
+            $updateData['tanggal'] = trim($cleanDate);
+        } else {
+            $updateData['tanggal'] = is_string($transaction->tanggal)
+                ? explode(' ', $transaction->tanggal)[0]
+                : $transaction->tanggal->format('Y-m-d');
+        }
+
+        if ($request->filled('paymentStatus')) {
+            $statusBaru = $request->input('paymentStatus');
+            $updateData['status'] = $statusBaru;
+        }
+
+        $transaction->update($updateData);
+
+        if ($request->filled('paymentStatus')) {
+            $statusBaru = $request->input('paymentStatus');
+
+            $transaction->refresh();
+
             if ($transaction->payment) {
                 $transaction->payment->update([
-                    'status' => $request->status_pembayaran,
+                    'status' => $statusBaru,
                 ]);
             }
         }
@@ -336,7 +360,7 @@ class TransactionController extends Controller
             'data' => $transaction->fresh()->load([
                 'user',
                 'payment',
-                'details.menu' // Sesuaikan jika relasinya bernama 'details' atau 'cart.items.menu'
+                'details.menu'
             ]),
         ]);
     }
@@ -363,6 +387,53 @@ class TransactionController extends Controller
         ]);
     }
 
+    public function accept(Request $request, Transaction $transaction)
+    {
+        if ($transaction->status !== 'pending') {
+            return response()->json([
+                'message' => 'Transaksi tidak dapat diterima.'
+            ], 422);
+        }
+
+        $transaction->update([
+            'status' => 'processing',
+        ]);
+
+        return response()->json([
+            'message' => 'Pesanan berhasil diterima.',
+            'data' => $transaction->fresh()->load([
+                'details.menu',
+                'payment',
+                'user',
+            ]),
+        ]);
+    }
+
+    public function ownerCancel(Transaction $transaction)
+    {
+        if ($transaction->status !== 'pending') {
+            return response()->json([
+                'message' => 'Transaksi tidak dapat dibatalkan.'
+            ], 422);
+        }
+
+        $transaction->update([
+            'status' => 'cancelled',
+        ]);
+
+        if ($transaction->payment) {
+            $transaction->payment->update([
+                'status' => 'cancelled',
+                'paid_at' => null,
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Pesanan berhasil dibatalkan.',
+            'data' => $transaction->fresh()->load('payment'),
+        ]);
+    }
+
     public function cancel(Request $request, Transaction $transaction)
     {
         if (
@@ -377,7 +448,7 @@ class TransactionController extends Controller
         if (
             !in_array(
                 $transaction->status,
-                ['pending', 'paid'],
+                ['pending', 'processing'],
                 true
             )
         ) {

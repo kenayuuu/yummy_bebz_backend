@@ -3,14 +3,29 @@
 namespace App\Http\Controllers;
 
 use App\Models\Payment;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Midtrans\Config;
+use Midtrans\Notification;
+use Midtrans\Snap;
 
 class PaymentController extends Controller
 {
+    public function __construct()
+    {
+        Config::$serverKey = config('services.midtrans.serverKey');
+        Config::$clientKey = config('services.midtrans.clientKey');
+        Config::$isProduction = config('services.midtrans.isProduction');
+        Config::$isSanitized = true;
+        Config::$is3ds = true;
+    }
+
     public function index(Request $request)
     {
-        $query = Payment::with(['transaction']);
+        $query = Payment::with('transaction');
 
         if ($request->user()->role === 'customer') {
             $query->where('user_id', $request->user()->id);
@@ -21,10 +36,236 @@ class PaymentController extends Controller
 
     public function show(Request $request, Payment $payment)
     {
-        if ($request->user()->role === 'customer' && $payment->user_id !== $request->user()->id) {
-            return response()->json(['message' => 'Pembayaran tidak ditemukan.'], Response::HTTP_NOT_FOUND);
+        if (
+            $request->user()->role === 'customer' &&
+            $payment->user_id !== $request->user()->id
+        ) {
+            return response()->json([
+                'message' => 'Pembayaran tidak ditemukan.'
+            ], Response::HTTP_NOT_FOUND);
         }
 
-        return response()->json($payment->load('transaction'));
+        return response()->json(
+            $payment->load('transaction')
+        );
+    }
+
+    /**
+     * Generate Midtrans Snap Token
+     */
+    public function snap(Transaction $transaction)
+    {
+        if (
+            auth()->user()->role === 'customer' &&
+            $transaction->user_id !== auth()->id()
+        ) {
+            return response()->json([
+                'message' => 'Transaksi tidak ditemukan.'
+            ], 404);
+        }
+
+        $payment = $transaction->payment;
+
+        if (!$payment) {
+            return response()->json([
+                'message' => 'Data pembayaran tidak ditemukan.'
+            ], 404);
+        }
+
+        if ($payment->status === 'paid') {
+            return response()->json([
+                'message' => 'Transaksi sudah dibayar.'
+            ], 400);
+        }
+
+        // Kalau sudah pernah generate token
+        if ($payment->snap_token) {
+            return response()->json([
+                'snap_token' => $payment->snap_token,
+                'order_id' => $payment->order_id,
+            ]);
+        }
+
+        $orderId = 'ORDER-' . $transaction->id . '-' . time();
+
+        $params = [
+            'transaction_details' => [
+                'order_id' => $orderId,
+                'gross_amount' => (int) $payment->amount,
+            ],
+            'callbacks' => [
+                'finish' => 'http://192.168.1.41:8000/payment/success',
+            ],
+            'customer_details' => [
+                'first_name' => $transaction->user->name,
+                'email' => $transaction->user->email,
+            ],
+        ];
+
+        try {
+
+            $snapToken = Snap::getSnapToken($params);
+
+            Log::info($snapToken);
+
+            $payment->update([
+                'order_id' => $orderId,
+                'snap_token' => $snapToken,
+            ]);
+
+            return response()->json([
+                'message' => 'Snap token berhasil dibuat.',
+                'snap_token' => $snapToken,
+                'redirect_url' => "https://app.sandbox.midtrans.com/snap/v4/redirection/" . $snapToken,
+                'order_id' => $orderId,
+            ]);
+        } catch (\Exception $e) {
+
+            Log::error('MIDTRANS SNAP ERROR', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Gagal membuat Snap Token.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Callback Midtrans
+     */
+    public function notification(Request $request)
+    {
+        Log::info("===== MIDTRANS CALLBACK =====");
+        Log::info($request->all());
+
+        $notification = new Notification();
+
+        $signature = hash(
+            'sha512',
+            $notification->order_id .
+                $notification->status_code .
+                $notification->gross_amount .
+                config('services.midtrans.serverKey')
+        );
+
+        if ($signature !== $notification->signature_key) {
+            return response()->json([
+                'message' => 'Invalid Signature'
+            ], 403);
+        }
+
+        DB::beginTransaction();
+
+        try {
+
+            $payment = Payment::where(
+                'order_id',
+                $notification->order_id
+            )->first();
+
+            if (!$payment) {
+
+                DB::rollBack();
+
+                return response()->json([
+                    'message' => 'Payment tidak ditemukan.'
+                ], 404);
+            }
+
+            $payment->transaction_id_midtrans = $notification->transaction_id;
+            $payment->reference = $notification->transaction_id;
+
+            switch ($notification->transaction_status) {
+
+                case 'capture':
+
+                    if ($notification->fraud_status == 'challenge') {
+
+                        $payment->status = 'pending';
+                    } else {
+
+                        $payment->status = 'paid';
+                        $payment->paid_at = now();
+
+                        $payment->transaction->update([
+                            'status' => 'paid'
+                        ]);
+                    }
+
+                    break;
+
+                case 'settlement':
+
+                    $payment->status = 'paid';
+                    $payment->paid_at = now();
+
+                    $payment->transaction->update([
+                        'status' => 'paid'
+                    ]);
+
+                    break;
+
+                case 'pending':
+
+                    $payment->status = 'pending';
+
+                    $payment->transaction->update([
+                        'status' => 'pending'
+                    ]);
+
+                    break;
+
+                case 'expire':
+
+                    $payment->status = 'failed';
+
+                    $payment->transaction->update([
+                        'status' => 'cancelled'
+                    ]);
+
+                    break;
+
+                case 'deny':
+
+                    $payment->status = 'failed';
+
+                    $payment->transaction->update([
+                        'status' => 'cancelled'
+                    ]);
+
+                    break;
+
+                case 'cancel':
+
+                    $payment->status = 'cancelled';
+
+                    $payment->transaction->update([
+                        'status' => 'cancelled'
+                    ]);
+
+                    break;
+            }
+
+            $payment->save();
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'OK'
+            ]);
+        } catch (\Throwable $e) {
+
+            DB::rollBack();
+
+            Log::error('MIDTRANS CALLBACK ERROR', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

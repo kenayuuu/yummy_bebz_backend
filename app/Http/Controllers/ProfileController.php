@@ -77,7 +77,7 @@ class ProfileController extends Controller
             ], 404);
         }
 
-        // Kembalikan data yang dibutuhkan saja (untuk keamanan)
+        // Kembalikan data yang dibutuhkan saja
         return response()->json([
             'id' => $user->id,
             'name' => $user->name,

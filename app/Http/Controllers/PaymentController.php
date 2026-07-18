@@ -50,9 +50,6 @@ class PaymentController extends Controller
         );
     }
 
-    /**
-     * Generate Midtrans Snap Token
-     */
     public function snap(Transaction $transaction)
     {
         if (
@@ -189,9 +186,9 @@ class PaymentController extends Controller
                         $payment->status = 'paid';
                         $payment->paid_at = now();
 
-                        $payment->transaction->update([
-                            'status' => 'paid'
-                        ]);
+                        // $payment->transaction->update([
+                        //     'status' => 'paid'
+                        // ]);
                     }
 
                     break;
@@ -201,9 +198,9 @@ class PaymentController extends Controller
                     $payment->status = 'paid';
                     $payment->paid_at = now();
 
-                    $payment->transaction->update([
-                        'status' => 'paid'
-                    ]);
+                    // $payment->transaction->update([
+                    //     'status' => 'paid'
+                    // ]);
 
                     break;
 
@@ -211,9 +208,9 @@ class PaymentController extends Controller
 
                     $payment->status = 'pending';
 
-                    $payment->transaction->update([
-                        'status' => 'pending'
-                    ]);
+                    // $payment->transaction->update([
+                    //     'status' => 'pending'
+                    // ]);
 
                     break;
 
@@ -267,5 +264,39 @@ class PaymentController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    public function complete(Transaction $transaction)
+    {
+        if ($transaction->status !== 'ready') {
+            return response()->json([
+                'message' => 'Pesanan belum siap diselesaikan.'
+            ], 422);
+        }
+
+        $transaction->update([
+            'status' => 'paid',
+        ]);
+
+        NotificationHelper::send(
+            $transaction->user,
+            'Pesanan Selesai',
+            'Terima kasih telah berbelanja di Yummy Bebz.',
+            'transaction',
+            [
+                'reference_id' => $transaction->id,
+                'transaction_id' => $transaction->id,
+                'status' => 'paid',
+            ]
+        );
+
+        return response()->json([
+            'message' => 'Pesanan selesai.',
+            'data' => $transaction->fresh()->load([
+                'details.menu',
+                'payment',
+                'user',
+            ]),
+        ]);
     }
 }

@@ -14,6 +14,7 @@ class Transaction extends Model
         'user_id',
         'cart_id',
         'customer_name',
+        'name',
         'tanggal',
         'status',
         'metode_pembayaran',
@@ -57,5 +58,9 @@ class Transaction extends Model
     public function rating(): HasOne
     {
         return $this->hasOne(Rating::class, 'transaction_id');
+    }
+    public function menu(): BelongsTo
+    {
+        return $this->belongsTo(Menu::class, 'menu_id');
     }
 }

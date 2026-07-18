@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Helpers\NotificationHelper;
 use App\Models\Notification;
 use App\Helpers\FirebaseHelper;
 use App\Models\Chat;
@@ -54,83 +55,19 @@ class ChatController extends Controller
 
         $receiver = User::find($data['receiver_id']);
 
-        Notification::create([
-            'user_id' => $receiver->id,
-            'title' => 'Pesan Baru',
-            'message' => $sender->name . ' : ' . $data['message'],
-            'type' => 'chat',
-            'reference_id' => $sender->id,
-        ]);
-
-        $receiver = User::find($data['receiver_id']);
-
-        if ($receiver && !empty($receiver->fcm_token)) {
-            try {
-                $accessToken = FirebaseHelper::getAccessToken();
-
-                $client = new Client([
-                    'timeout' => 30,
-                ]);
-
-                \Log::info($receiver->fcm_token);
-
-                $client->post(
-                    'https://fcm.googleapis.com/v1/projects/yummy-bebz/messages:send',
-                    [
-                        'headers' => [
-                            'Authorization' => 'Bearer ' . $accessToken,
-                            'Content-Type' => 'application/json',
-                        ],
-                        'json' => [
-                            'message' => [
-                                'token' => $receiver->fcm_token,
-
-                                'notification' => [
-                                    'title' => 'Pesan Baru',
-                                    'body' => $sender->name . ' : ' . $data['message'],
-                                ],
-
-                                'data' => [
-                                    'type' => 'chat',
-                                    'sender_id' => (string) $sender->id,
-                                    'sender_name' => $sender->name,
-                                    'receiver_id' => (string) $receiver->id,
-                                    'message' => $data['message'],
-                                ],
-
-                                'android' => [
-                                    'priority' => 'HIGH',
-                                    'notification' => [
-                                        'channel_id' => 'chat_channel',
-                                        'sound' => 'default',
-                                        'default_sound' => true,
-                                        'default_vibrate_timings' => true,
-                                    ],
-                                ],
-
-                                'apns' => [
-                                    'headers' => [
-                                        'apns-priority' => '10',
-                                    ],
-                                    'payload' => [
-                                        'aps' => [
-                                            'alert' => [
-                                                'title' => 'Pesan Baru',
-                                                'body' => $sender->name . ' : ' . $data['message'],
-                                            ],
-                                            'sound' => 'default',
-                                            'badge' => 1,
-                                        ],
-                                    ],
-                                ],
-                            ],
-                        ],
-                    ]
-                );
-            } catch (\Throwable $e) {
-                \Log::error('FCM Error: ' . $e->getMessage());
-            }
-        }
+        NotificationHelper::send(
+            $receiver,
+            'Pesan Baru',
+            $sender->name . ' : ' . $data['message'],
+            'chat',
+            [
+                'reference_id' => $sender->id,
+                'sender_id' => $sender->id,
+                'sender_name' => $sender->name,
+                'receiver_id' => $receiver->id,
+                'message' => $data['message'],
+            ]
+        );
 
         return response()->json($chat);
     }

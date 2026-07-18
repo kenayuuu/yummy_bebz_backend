@@ -2,6 +2,8 @@
 
 ## php artisan serve --host=192.168.254.100 --port=8000
 
+## cd C:\Users\user\Downloads\ngrok-v3-stable-windows-amd64
+
 ## ngrok http http://192.168.1.41:8000
 
 ## test@example.com cipin@gmail.com .

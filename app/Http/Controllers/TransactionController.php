@@ -8,6 +8,9 @@ use App\Models\Menu;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use App\Models\TransactionDetail;
+use App\Helpers\NotificationHelper;
+use App\Models\User;
+use App\Services\FCMService;
 
 class TransactionController extends Controller
 {
@@ -126,6 +129,8 @@ class TransactionController extends Controller
                 'total_keuntungan' => $totalKeuntungan,
             ]);
 
+            $this->sendOrderNotification($transaction);
+
             foreach ($cart->items as $item) {
                 TransactionDetail::create([
                     'transaction_id' => $transaction->id,
@@ -199,6 +204,8 @@ class TransactionController extends Controller
             'total_keuntungan' => $totalKeuntungan,
         ]);
 
+        $this->sendOrderNotification($transaction);
+
         foreach ($validated['details'] as $detail) {
             $menu = Menu::findOrFail($detail['menu_id']);
             $qty = $detail['quantity'];
@@ -244,8 +251,8 @@ class TransactionController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.menu_id' => ['required', 'exists:menus,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'items.*.harga_satuan' => ['required', 'numeric'],
-            'items.*.keuntungan_satuan' => ['required', 'numeric'],
+            // 'items.*.harga_satuan' => ['required', 'numeric'],
+            // 'items.*.keuntungan_satuan' => ['required', 'numeric'],
         ]);
 
         $transaction = Transaction::create([
@@ -260,16 +267,17 @@ class TransactionController extends Controller
             'total_keuntungan' => $validated['total_keuntungan'],
         ]);
 
-        foreach ($validated['items'] as $item) {
 
+        foreach ($validated['items'] as $item) {
+            $menu = Menu::findOrFail($item['menu_id']);
             TransactionDetail::create([
                 'transaction_id' => $transaction->id,
-                'menu_id' => $item['menu_id'],
+                'menu_id' => $menu->id,
                 'quantity' => $item['quantity'],
-                'harga_satuan' => $item['harga_satuan'],
-                'keuntungan_satuan' => $item['keuntungan_satuan'],
-                'subtotal' => $item['harga_satuan'] * $item['quantity'],
-                'subtotal_keuntungan' => $item['keuntungan_satuan'] * $item['quantity'],
+                'harga_satuan' => $menu->harga_jual,
+                'keuntungan_satuan' => $menu->keuntungan,
+                'subtotal' => $menu->harga_jual * $item['quantity'],
+                'subtotal_keuntungan' => $menu->keuntungan * $item['quantity'],
             ]);
         }
 
@@ -353,6 +361,19 @@ class TransactionController extends Controller
                     'status' => $statusBaru,
                 ]);
             }
+            if ($transaction->user && $statusBaru == 'paid') {
+                NotificationHelper::send(
+                    $transaction->user,
+                    'Pesanan Selesai',
+                    'Pesanan Anda telah selesai.',
+                    'transaction',
+                    [
+                        'reference_id' => $transaction->id,
+                        'transaction_id' => $transaction->id,
+                        'status' => 'paid',
+                    ]
+                );
+            }
         }
 
         return response()->json([
@@ -399,6 +420,20 @@ class TransactionController extends Controller
             'status' => 'processing',
         ]);
 
+        if ($transaction->user) {
+            NotificationHelper::send(
+                $transaction->user,
+                'Pesanan Diproses',
+                'Pesanan Anda sedang dibuat.',
+                'transaction',
+                [
+                    'reference_id' => $transaction->id,
+                    'transaction_id' => $transaction->id,
+                    'status' => 'processing',
+                ]
+            );
+        }
+
         return response()->json([
             'message' => 'Pesanan berhasil diterima.',
             'data' => $transaction->fresh()->load([
@@ -420,6 +455,20 @@ class TransactionController extends Controller
         $transaction->update([
             'status' => 'cancelled',
         ]);
+
+        if ($transaction->user) {
+            NotificationHelper::send(
+                $transaction->user,
+                'Pesanan Dibatalkan',
+                'Pesanan Anda telah dibatalkan oleh penjual.',
+                'transaction',
+                [
+                    'reference_id' => $transaction->id,
+                    'transaction_id' => $transaction->id,
+                    'status' => 'cancelled',
+                ]
+            );
+        }
 
         if ($transaction->payment) {
             $transaction->payment->update([
@@ -458,8 +507,22 @@ class TransactionController extends Controller
         }
 
         $transaction->update([
-            'status' => 'cancelled'
+            'status' => 'cancelled',
         ]);
+
+        if ($transaction->user) {
+            NotificationHelper::send(
+                $transaction->user,
+                'Pesanan Dibatalkan',
+                'Pesanan Anda telah dibatalkan.',
+                'transaction',
+                [
+                    'reference_id' => $transaction->id,
+                    'transaction_id' => $transaction->id,
+                    'status' => 'cancelled',
+                ]
+            );
+        }
 
         if ($transaction->payment) {
             $transaction->payment->update([
@@ -472,5 +535,91 @@ class TransactionController extends Controller
             'message' => 'Transaksi berhasil dibatalkan.',
             'data' => $transaction->fresh()->load('payment'),
         ]);
+    }
+
+    public function ready(Transaction $transaction)
+    {
+        if ($transaction->status !== 'processing') {
+            return response()->json([
+                'message' => 'Pesanan belum dapat ditandai siap.'
+            ], 422);
+        }
+
+        $transaction->update([
+            'status' => 'ready',
+        ]);
+
+        if ($transaction->user) {
+            NotificationHelper::send(
+                $transaction->user,
+                'Pesanan Siap',
+                'Pesanan Anda siap diambil.',
+                'transaction',
+                [
+                    'reference_id' => $transaction->id,
+                    'transaction_id' => $transaction->id,
+                    'status' => 'ready',
+                ]
+            );
+        }
+
+        return response()->json([
+            'message' => 'Pesanan siap diambil.',
+            'data' => $transaction->fresh()->load([
+                'details.menu',
+                'payment',
+                'user',
+            ]),
+        ]);
+    }
+
+    public function paid(Transaction $transaction)
+    {
+        $transaction->update([
+            'status' => 'completed',
+        ]);
+
+        if ($transaction->user) {
+            NotificationHelper::send(
+                $transaction->user,
+                'Pesanan Selesai',
+                'Terima kasih telah memesan di Yummy Bebz.',
+                'transaction',
+                [
+                    'reference_id' => $transaction->id,
+                    'transaction_id' => $transaction->id,
+                    'status' => 'completed',
+                ]
+            );
+        }
+
+        return response()->json([
+            'message' => 'Transaksi berhasil diperbarui menjadi dibayar.',
+            'data' => $transaction->fresh()->load([
+                'details.menu',
+                'payment',
+                'user',
+            ]),
+        ]);
+    }
+
+    private function sendOrderNotification(Transaction $transaction): void
+    {
+        $owners = User::where('role', 'owner')
+            ->whereNotNull('fcm_token')
+            ->get();
+
+        foreach ($owners as $owner) {
+
+            FCMService::send(
+                $owner->fcm_token,
+                'Pesanan Baru',
+                'Ada pesanan baru dari ' . $transaction->customer_name,
+                [
+                    'type' => 'new_order',
+                    'transaction_id' => $transaction->id,
+                ]
+            );
+        }
     }
 }

@@ -63,6 +63,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/transactions/{transaction}', [TransactionController::class, 'update']);
         Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy']);
         Route::post('/transactions/{transaction}/accept', [TransactionController::class, 'accept']);
+        Route::put('/transactions/{transaction}/ready', [TransactionController::class, 'ready']);
+        Route::post('/transactions/{transaction}/paid', [TransactionController::class, 'paid']);
         Route::post('/transactions/{transaction}/owner-cancel', [TransactionController::class, 'ownerCancel']);
         Route::get('/owner/transactions/{transaction}', [TransactionController::class, 'show']);
         Route::post('/notifications', [NotificationController::class, 'store']);

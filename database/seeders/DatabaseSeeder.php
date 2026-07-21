@@ -44,7 +44,7 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             MenuSeeder::class,
-            TransactionSeeder::class,
+            PaymentMethodSeeder::class,
         ]);
     }
 }

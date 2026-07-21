@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 
 class CartController extends Controller
 {
@@ -113,73 +114,93 @@ class CartController extends Controller
 
     public function checkout(Request $request)
     {
-        $cart = Cart::where('user_id', $request->user()->id)
-            ->where('status', 'open')
-            ->firstOrFail();
+        try {
+            $cart = Cart::where('user_id', $request->user()->id)
+                ->where('status', 'open')
+                ->firstOrFail();
 
-        $validated = $request->validate([
-            'payment_method' => ['nullable', 'string', 'max:100'],
-            'metode_pembayaran' => ['nullable', 'string', 'max:100'],
-            'tanggal' => ['nullable', 'date'],
-            'cart_ids' => ['required', 'array'],
-            'cart_ids.*' => ['integer'],
-        ]);
-
-        $metodePembayaran = $request->input('payment_method') ?? $request->input('metode_pembayaran') ?? 'cash';
-
-        $selectedItems = $cart->items()
-            ->whereIn('id', $request->input('cart_ids'))
-            ->with('menu')
-            ->get();
-
-        if ($selectedItems->isEmpty()) {
-            return response()->json(['message' => 'Tidak ada item terpilih untuk dicheckout.'], 400);
-        }
-
-        $checkoutTotalItems = $selectedItems->sum('quantity');
-        $checkoutTotalPrice = $selectedItems->sum('total_price');
-
-        $checkoutTotalKeuntungan = $selectedItems->sum(function ($item) {
-            $hargaModal = $item->menu->harga_modal ?? $item->menu->harga_beli ?? 0;
-            return (($item->menu->harga_jual ?? $item->price) - $hargaModal) * $item->quantity;
-        });
-
-        $transaction = Transaction::create([
-            'user_id' => $request->user()->id,
-            'cart_id' => $cart->id,
-            'name' => $request->user()->name ?? 'Customer',
-            'customer_name' => $request->user()->name ?? 'Customer',
-            'tanggal' => now(),
-            'status' => 'pending',
-            'metode_pembayaran' => $metodePembayaran,
-            'total_jumlah' => $checkoutTotalItems,
-            'total_harga' => $checkoutTotalPrice,
-            'total_keuntungan' => $checkoutTotalKeuntungan,
-        ]);
-
-        foreach ($selectedItems as $item) {
-            $transaction->details()->create([
-                'menu_id' => $item->menu_id,
-                'quantity' => $item->quantity,
-                'harga' => $item->price ?? $item->menu->harga_jual,
+            $validated = $request->validate([
+                'payment_method' => ['nullable', 'string', 'max:100'],
+                'tanggal' => ['nullable', 'date'],
+                'cart_ids' => ['required', 'array'],
+                'cart_ids.*' => ['integer'],
             ]);
+
+            $paymentMethodStr = $request->input('payment_method') ?? 'cash';
+
+            $paymentMethod = \App\Models\PaymentMethod::where('code', $paymentMethodStr)
+                ->orWhere('name', 'LIKE', '%' . $paymentMethodStr . '%')
+                ->first();
+
+            $paymentMethodId = $paymentMethod?->id ?? 1;
+
+            $selectedItems = $cart->items()
+                ->whereIn('id', $request->input('cart_ids'))
+                ->with('menu')
+                ->get();
+
+            if ($selectedItems->isEmpty()) {
+                return response()->json(['message' => 'Tidak ada item terpilih untuk dicheckout.'], 400);
+            }
+
+            $checkoutTotalItems = $selectedItems->sum('quantity');
+            $checkoutTotalPrice = $selectedItems->sum('total_price');
+
+            $checkoutTotalKeuntungan = $selectedItems->sum(function ($item) {
+                $hargaModal = $item->menu->harga_modal ?? $item->menu->harga_beli ?? 0;
+                return (($item->menu->harga_jual ?? $item->price) - $hargaModal) * $item->quantity;
+            });
+
+            return DB::transaction(function () use ($request, $cart, $paymentMethodId, $checkoutTotalItems, $checkoutTotalPrice, $checkoutTotalKeuntungan, $selectedItems) {
+
+                $transaction = Transaction::create([
+                    'user_id' => $request->user()->id,
+                    'cart_id' => $cart->id,
+                    'payment_method_id' => $paymentMethodId,
+                    'name' => $request->user()->name ?? 'Customer',
+                    'customer_name' => $request->user()->name ?? 'Customer',
+                    'tanggal' => now(),
+                    'status' => 'pending',
+                    'total_jumlah' => $checkoutTotalItems,
+                    'total_harga' => $checkoutTotalPrice,
+                    'total_keuntungan' => $checkoutTotalKeuntungan,
+                ]);
+
+                foreach ($selectedItems as $item) {
+                    DB::table('transaction_details')->insert([
+                        'transaction_id' => $transaction->id,
+                        'menu_id'        => $item->menu_id,
+                        'quantity'       => $item->quantity,
+                        'harga_satuan'   => $item->harga_satuan ?? $item->menu->harga_jual ?? 0,
+                        'created_at'     => now(),
+                        'updated_at'     => now(),
+                    ]);
+                }
+
+                Payment::create([
+                    'user_id'           => $request->user()->id,
+                    'transaction_id'    => $transaction->id,
+                    'payment_method_id' => $paymentMethodId,
+                    'amount'            => $checkoutTotalPrice,
+                    'status'            => 'pending',
+                ]);
+
+                $cart->items()->whereIn('id', $request->input('cart_ids'))->delete();
+                $this->recalculateCart($cart);
+
+                return response()->json([
+                    'message' => 'Checkout berhasil. Lanjutkan pembayaran untuk menyelesaikan pesanan.',
+                    'transaction' => $transaction->load('paymentMethod'),
+                ], 201);
+            });
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Server Error Terdeteksi di Laravel!',
+                'error_asli' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
+            ], 500);
         }
-
-        Payment::create([
-            'user_id' => $request->user()->id,
-            'transaction_id' => $transaction->id,
-            'metode_pembayaran' => $metodePembayaran,
-            'amount' => $checkoutTotalPrice,
-            'status' => 'pending',
-        ]);
-
-        $cart->items()->whereIn('id', $request->input('cart_ids'))->delete();
-        $this->recalculateCart($cart);
-
-        return response()->json([
-            'message' => 'Checkout berhasil. Lanjutkan pembayaran untuk menyelesaikan pesanan.',
-            'transaction' => $transaction->load('details.menu'),
-        ], 201);
     }
 
     protected function recalculateCart(Cart $cart): void

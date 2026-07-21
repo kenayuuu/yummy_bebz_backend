@@ -9,8 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('carts', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->increments('id');
+            $table->unsignedInteger('user_id');
+            $table->foreign('user_id')
+                ->references('id')
+                ->on('users')
+                ->cascadeOnDelete();
             $table->enum('status', ['open', 'checked_out', 'cancelled'])->default('open');
             $table->unsignedInteger('total_items')->default(0);
             $table->decimal('subtotal', 12, 2)->default(0);

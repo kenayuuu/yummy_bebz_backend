@@ -12,14 +12,19 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('transactions', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')
-                ->nullable()
-                ->constrained()
+            $table->increments('id');
+            $table->unsignedInteger('user_id')->nullable();
+            $table->foreign('user_id')
+                ->references('id')
+                ->on('users')
                 ->nullOnDelete();
             $table->string('customer_name')->nullable();
-            $table->unsignedBigInteger('cart_id')->nullable();
-            $table->string('name')->nullable();
+            $table->unsignedInteger('cart_id')->nullable();
+            $table->foreign('cart_id')
+                ->references('id')
+                ->on('carts')
+                ->nullOnDelete();
+            $table->string('name', 20)->nullable();
             $table->date('tanggal');
             $table->enum('status', [
                 'pending',
@@ -29,11 +34,11 @@ return new class extends Migration
                 'cancelled',
                 'completed'
             ])->default('pending');
-            $table->enum('metode_pembayaran', [
-                'cash',
-                'transfer_bank',
-                'midtrans',
-            ])->nullable();
+            $table->unsignedInteger('payment_method_id')->nullable();
+            $table->foreign('payment_method_id')
+                ->references('id')
+                ->on('payment_methods')
+                ->nullOnDelete(); 
             $table->unsignedInteger('total_jumlah')->default(0);
             $table->decimal('total_harga', 12, 2)->default(0);
             $table->decimal('total_keuntungan', 12, 2)->default(0);

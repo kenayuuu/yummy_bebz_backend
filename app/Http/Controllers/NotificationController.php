@@ -9,13 +9,19 @@ class NotificationController extends Controller
 {
     public function index(Request $request)
     {
+        $userId = $request->user()->id;
+        $notifications = Notification::where('user_id', $userId)
+            ->latest()
+            ->get();
+
+        $unreadCount = Notification::where('user_id', $userId)
+            ->where('is_read', 0)
+            ->count();
+
         return response()->json([
-            'data' => Notification::where('user_id', $request->user()->id)
-                ->latest()
-                ->get(),
-            'unread_count' => Notification::where('user_id', $request->user()->id)
-                ->where('is_read', 0)
-                ->count()
+            'message' => 'Daftar notifikasi berhasil diambil.',
+            'data' => $notifications,
+            'unread_count' => $unreadCount
         ]);
     }
 
@@ -46,7 +52,14 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Notifikasi tidak ditemukan.'], 404);
         }
 
-        return response()->json($notification);
+        if (!$notification->is_read) {
+            $notification->update(['is_read' => 1]);
+        }
+
+        return response()->json([
+            'message' => 'Detail notifikasi berhasil diambil.',
+            'data' => $notification
+        ]);
     }
 
     public function update(Request $request, Notification $notification)

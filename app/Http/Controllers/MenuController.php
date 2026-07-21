@@ -33,6 +33,17 @@ class MenuController extends Controller
 
     public function store(Request $request)
     {
+        if ($request->has('waktu_mulai') && $request->waktu_mulai) {
+            $request->merge([
+                'waktu_mulai' => substr($request->waktu_mulai, 0, 5)
+            ]);
+        }
+        if ($request->has('waktu_selesai') && $request->waktu_selesai) {
+            $request->merge([
+                'waktu_selesai' => substr($request->waktu_selesai, 0, 5)
+            ]);
+        }
+
         $validated = $request->validate([
             'nama_menu' => ['required', 'string', 'max:255'],
             'deskripsi' => ['nullable', 'string'],
@@ -40,8 +51,10 @@ class MenuController extends Controller
             'harga_jual' => ['required', 'numeric', 'min:0'],
             'gambar' => ['nullable', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
             'tanggal' => ['nullable'],
-            'waktu_mulai' => ['nullable'],
-            'waktu_selesai' => ['nullable'],
+            'waktu_mulai' => ['nullable', 'date_format:H:i'],
+            'waktu_selesai' => ['nullable', 'date_format:H:i'],
+            // 'waktu_mulai' => ['nullable'],
+            // 'waktu_selesai' => ['nullable'],
             'status' => ['required', 'string', 'max:50'],
         ]);
 
@@ -76,6 +89,17 @@ class MenuController extends Controller
 
     public function update(Request $request, Menu $menu)
     {
+        if ($request->has('waktu_mulai') && $request->waktu_mulai) {
+            $request->merge([
+                'waktu_mulai' => substr($request->waktu_mulai, 0, 5)
+            ]);
+        }
+        if ($request->has('waktu_selesai') && $request->waktu_selesai) {
+            $request->merge([
+                'waktu_selesai' => substr($request->waktu_selesai, 0, 5)
+            ]);
+        }
+
         $validated = $request->validate([
             'nama_menu' => ['sometimes', 'string', 'max:255'],
             'deskripsi' => ['sometimes', 'nullable', 'string'],
@@ -83,8 +107,10 @@ class MenuController extends Controller
             'harga_jual' => ['sometimes', 'numeric', 'min:0'],
             'gambar' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png', 'max:2048'],
             'tanggal' => ['nullable'],
-            'waktu_mulai' => ['nullable'],
-            'waktu_selesai' => ['nullable'],
+            'waktu_mulai' => ['nullable', 'date_format:H:i'],
+            'waktu_selesai' => ['nullable', 'date_format:H:i'],
+            // 'waktu_mulai' => ['nullable'],
+            // 'waktu_selesai' => ['nullable'],
             'status' => ['sometimes', 'string', 'max:50'],
         ]);
 
@@ -120,11 +146,9 @@ class MenuController extends Controller
 
     public function destroy(Menu $menu)
     {
-        if ($menu->gambar) {
-
-            $oldPath = str_replace(asset('storage') . '/', '', $menu->gambar);
-
-            Storage::disk('public')->delete($oldPath);
+        // getRawOriginal agar path asli yang dihapus, bukan URL asset()
+        if ($menu->getRawOriginal('gambar')) {
+            Storage::disk('public')->delete($menu->getRawOriginal('gambar'));
         }
 
         $menu->delete();

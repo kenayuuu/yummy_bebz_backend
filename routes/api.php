@@ -11,6 +11,7 @@ use App\Http\Controllers\RatingController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\TransactionController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\UserController;
 
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/reset-password', [AuthController::class, 'resetPassword']);
@@ -54,24 +55,51 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('ratings', RatingController::class)
         ->only(['index', 'store', 'show', 'update', 'destroy']);
 
-    Route::middleware('role:owner')->group(function () {
+    // Route::middleware('role:owner')->group(function () {
+    //     Route::get('/users', [UserController::class, 'index']);
+    //     Route::put('/users/{id}/role', [UserController::class, 'updateRole']);
+    //     Route::apiResource('menus', MenuController::class)
+    //         ->except(['index', 'show']);
+    //     Route::apiResource('transactions', TransactionController::class)
+    //         ->except(['index', 'show', 'store']);
+    //     Route::post('/transactions/offline', [TransactionController::class, 'storeOffline']);
+    //     Route::put('/transactions/{transaction}', [TransactionController::class, 'update']);
+    //     Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy']);
+    //     Route::post('/transactions/{transaction}/accept', [TransactionController::class, 'accept']);
+    //     Route::put('/transactions/{transaction}/ready', [TransactionController::class, 'ready']);
+    //     Route::post('/transactions/{transaction}/paid', [TransactionController::class, 'paid']);
+    //     Route::post('/transactions/{transaction}/owner-cancel', [TransactionController::class, 'ownerCancel']);
+    //     Route::get('/owner/transactions/{transaction}', [TransactionController::class, 'show']);
+    //     Route::post('/notifications', [NotificationController::class, 'store']);
+    //     Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
+    //     Route::get('/reports', [ReportController::class, 'index']);
+    //     Route::get('/reports/pdf', [ReportController::class, 'exportPdf']);
+    //     Route::get('/owner/chat-rooms', [ChatController::class, 'chatRooms']);
+    // });
+
+    Route::middleware('role:owner,karyawan')->group(function () {
         Route::apiResource('menus', MenuController::class)
             ->except(['index', 'show']);
-        Route::apiResource('transactions', TransactionController::class)
-            ->except(['index', 'show', 'store']);
+        Route::post('/menus/{menu}', [MenuController::class, 'update']);
         Route::post('/transactions/offline', [TransactionController::class, 'storeOffline']);
         Route::put('/transactions/{transaction}', [TransactionController::class, 'update']);
-        Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy']);
         Route::post('/transactions/{transaction}/accept', [TransactionController::class, 'accept']);
         Route::put('/transactions/{transaction}/ready', [TransactionController::class, 'ready']);
         Route::post('/transactions/{transaction}/paid', [TransactionController::class, 'paid']);
         Route::post('/transactions/{transaction}/owner-cancel', [TransactionController::class, 'ownerCancel']);
         Route::get('/owner/transactions/{transaction}', [TransactionController::class, 'show']);
+        Route::get('/owner/chat-rooms', [ChatController::class, 'chatRooms']);
         Route::post('/notifications', [NotificationController::class, 'store']);
-        Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
+    });
+
+    Route::middleware('role:owner')->group(function () {
+        Route::get('/users', [UserController::class, 'index']);
+        Route::put('/users/{id}/role', [UserController::class, 'updateRole']);
+        Route::delete('/menus/{menu}', [MenuController::class, 'destroy']);
+        Route::delete('/transactions/{transaction}', [TransactionController::class, 'destroy']);
         Route::get('/reports', [ReportController::class, 'index']);
         Route::get('/reports/pdf', [ReportController::class, 'exportPdf']);
-        Route::get('/owner/chat-rooms', [ChatController::class, 'chatRooms']);
+        Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy']);
     });
 
     // CUSTOMER
@@ -83,7 +111,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/cart/checkout', [CartController::class, 'checkout']);
         Route::get('/payments', [PaymentController::class, 'index']);
         Route::get('/payments/{payment}', [PaymentController::class, 'show']);
-        // generate snap token
+        Route::post('/transactions/{transaction}/cancel', [TransactionController::class, 'cancel']);
         Route::post('/payments/{transaction}/snap', [PaymentController::class, 'snap']);
         Route::post('/transactions', [TransactionController::class, 'store']);
         Route::post('/transactions/{transaction}/cancel', [TransactionController::class, 'cancel']);

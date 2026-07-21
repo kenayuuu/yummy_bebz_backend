@@ -17,13 +17,22 @@ class RoleMiddleware
     {
         $user = $request->user();
 
+        $parsedRoles = [];
+        foreach ($roles as $role) {
+            foreach (explode(',', $role) as $r) {
+                $parsedRoles[] = strtolower(trim($r));
+            }
+        }
+
+        $userRole = strtolower(trim($user?->role ?? ''));
+
         \Log::info('ROLE MIDDLEWARE', [
             'url' => $request->path(),
-            'user_role' => $user?->role,
-            'allowed_roles' => $roles,
+            'user_role' => $userRole,
+            'allowed_roles' => $parsedRoles,
         ]);
 
-        if (! $user || ! in_array($user->role, $roles, true)) {
+        if (! $user || ! in_array($userRole, $parsedRoles, true)) {
             return response()->json([
                 'message' => 'Anda tidak memiliki hak akses.',
             ], Response::HTTP_FORBIDDEN);

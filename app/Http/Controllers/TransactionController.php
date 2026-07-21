@@ -19,6 +19,7 @@ class TransactionController extends Controller
         $user = $request->user();
         $query = Transaction::with([
             'details.menu',
+            'paymentMethod',
             'payment',
             'rating'
         ]);
@@ -49,9 +50,9 @@ class TransactionController extends Controller
                 'required',
                 'string'
             ],
-            'metode_pembayaran' => [
+            'payment_method_id' => [
                 'required',
-                'in:cash,midtrans'
+                'exists:payment_methods,id'
             ],
             'details' => [
                 'nullable',
@@ -123,7 +124,7 @@ class TransactionController extends Controller
                 'customer_name' => $validated['customer_name'] ?? $request->user()->name,
                 'tanggal' => $tanggalFix,
                 'status' => 'pending',
-                'metode_pembayaran' => $validated['metode_pembayaran'],
+                'payment_method_id' => $validated['payment_method_id'],
                 'total_jumlah' => $cart->total_items,
                 'total_harga' => $cart->total_price,
                 'total_keuntungan' => $totalKeuntungan,
@@ -146,7 +147,7 @@ class TransactionController extends Controller
             Payment::create([
                 'user_id' =>  $request->user()->id,
                 'transaction_id' => $transaction->id,
-                'metode_pembayaran' =>  $validated['metode_pembayaran'],
+                'payment_method_id' => $validated['payment_method_id'],
                 'amount' => $cart->total_price,
                 'status' => 'pending',
             ]);
@@ -198,7 +199,7 @@ class TransactionController extends Controller
             'customer_name' => $validated['customer_name'] ?? $request->user()->name,
             'tanggal' => $tanggalFix,
             'status' => 'pending',
-            'metode_pembayaran' => $validated['metode_pembayaran'],
+            'payment_method_id' => $validated['payment_method_id'],
             'total_jumlah' => $totalJumlah,
             'total_harga' => $totalHarga,
             'total_keuntungan' => $totalKeuntungan,
@@ -224,7 +225,7 @@ class TransactionController extends Controller
         Payment::create([
             'user_id' => $request->user()->id,
             'transaction_id' => $transaction->id,
-            'metode_pembayaran' => $validated['metode_pembayaran'],
+            'payment_method_id' => $validated['payment_method_id'],
             'amount' => $totalHarga,
             'status' => 'pending',
         ]);
@@ -244,7 +245,7 @@ class TransactionController extends Controller
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'tanggal' => ['required', 'date'],
-            'metode_pembayaran' => ['required', 'string'],
+            'payment_method_id' => ['required', 'exists:payment_methods,id'],
             'total_jumlah' => ['required', 'integer'],
             'total_harga' => ['required', 'numeric'],
             'total_keuntungan' => ['required', 'numeric'],
@@ -261,7 +262,7 @@ class TransactionController extends Controller
             'name' => $validated['name'],
             'tanggal' => $validated['tanggal'],
             'status' => 'paid',
-            'metode_pembayaran' => $validated['metode_pembayaran'],
+            'payment_method_id' => $validated['payment_method_id'],
             'total_jumlah' => $validated['total_jumlah'],
             'total_harga' => $validated['total_harga'],
             'total_keuntungan' => $validated['total_keuntungan'],
@@ -315,7 +316,7 @@ class TransactionController extends Controller
         $validated = $request->validate([
             'customer_name'     => ['sometimes', 'string', 'max:255'],
             'tanggal'           => ['sometimes'],
-            'metode_pembayaran' => ['sometimes', 'string', 'max:100'],
+            'payment_method_id' => ['sometimes', 'exists:payment_methods,id'],
             'total_jumlah'      => ['sometimes', 'integer'],
             'total_harga'       => ['sometimes', 'numeric'],
             'total_keuntungan'  => ['sometimes', 'numeric'],
@@ -324,7 +325,7 @@ class TransactionController extends Controller
 
         $updateData = [
             'customer_name'     => $request->input('customer_name', $transaction->customer_name),
-            'metode_pembayaran' => $request->input('metode_pembayaran', $transaction->metode_pembayaran),
+            'payment_method_id' => $request->input('payment_method_id', $transaction->payment_method_id),
             'total_jumlah'      => $request->input('total_jumlah', $transaction->total_jumlah),
             'total_harga'       => $request->input('total_harga', $transaction->total_harga),
             'total_keuntungan'  => $request->input('total_keuntungan', $transaction->total_keuntungan),
@@ -410,9 +411,9 @@ class TransactionController extends Controller
 
     public function accept(Request $request, Transaction $transaction)
     {
-        if ($transaction->status !== 'pending') {
+        if (in_array($transaction->status, ['processing', 'ready', 'completed', 'cancelled', 'failed'])) {
             return response()->json([
-                'message' => 'Transaksi tidak dapat diterima.'
+                'message' => 'Transaksi tidak dapat diterima karena sudah diproses atau selesai.'
             ], 422);
         }
 

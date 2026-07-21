@@ -9,14 +9,18 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('chats', function (Blueprint $table) {
-            $table->id();
+            $table->increments('id');
 
-            $table->foreignId('sender_id')
-                ->constrained('users')
+            $table->unsignedInteger('sender_id');
+            $table->foreign('sender_id')
+                ->references('id')
+                ->on('users')
                 ->cascadeOnDelete();
 
-            $table->foreignId('receiver_id')
-                ->constrained('users')
+            $table->unsignedInteger('receiver_id');
+            $table->foreign('receiver_id')
+                ->references('id')
+                ->on('users')
                 ->cascadeOnDelete();
 
             $table->text('message');

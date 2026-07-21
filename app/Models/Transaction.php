@@ -17,7 +17,7 @@ class Transaction extends Model
         'name',
         'tanggal',
         'status',
-        'metode_pembayaran',
+        'payment_method_id',
         'total_jumlah',
         'total_harga',
         'total_keuntungan',
@@ -62,5 +62,9 @@ class Transaction extends Model
     public function menu(): BelongsTo
     {
         return $this->belongsTo(Menu::class, 'menu_id');
+    }
+    public function paymentMethod()
+    {
+        return $this->belongsTo(PaymentMethod::class);
     }
 }

@@ -9,9 +9,17 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('cart_items', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('cart_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('menu_id')->constrained()->cascadeOnDelete();
+            $table->increments('id');
+            $table->unsignedInteger('cart_id');
+            $table->foreign('cart_id')
+                ->references('id')
+                ->on('carts')
+                ->cascadeOnDelete();
+            $table->unsignedInteger('menu_id');
+            $table->foreign('menu_id')
+                ->references('id')
+                ->on('menus')
+                ->cascadeOnDelete();
             $table->unsignedInteger('quantity')->default(1);
             $table->decimal('price', 12, 2);
             $table->decimal('total_price', 12, 2);

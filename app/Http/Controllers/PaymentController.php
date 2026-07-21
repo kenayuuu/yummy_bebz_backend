@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Payment;
 use App\Models\Transaction;
+use App\Models\PaymentMethod;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Midtrans\Config;
 use Midtrans\Notification;
 use Midtrans\Snap;
+use App\Helpers\NotificationHelper;
 
 class PaymentController extends Controller
 {
@@ -25,7 +27,7 @@ class PaymentController extends Controller
 
     public function index(Request $request)
     {
-        $query = Payment::with('transaction');
+        $query = Payment::with(['transaction', 'paymentMethod']);
 
         if ($request->user()->role === 'customer') {
             $query->where('user_id', $request->user()->id);
@@ -46,7 +48,7 @@ class PaymentController extends Controller
         }
 
         return response()->json(
-            $payment->load('transaction')
+            $payment->load(['transaction', 'paymentMethod'])
         );
     }
 
@@ -75,7 +77,6 @@ class PaymentController extends Controller
             ], 400);
         }
 
-        // Kalau sudah pernah generate token
         if ($payment->snap_token) {
             return response()->json([
                 'snap_token' => $payment->snap_token,
@@ -91,7 +92,7 @@ class PaymentController extends Controller
                 'gross_amount' => (int) $payment->amount,
             ],
             'callbacks' => [
-                'finish' => 'http://192.168.1.41:8000/payment/success',
+                'finish' => url('/payment/success'),
             ],
             'customer_details' => [
                 'first_name' => $transaction->user->name,
@@ -100,14 +101,16 @@ class PaymentController extends Controller
         ];
 
         try {
-
             $snapToken = Snap::getSnapToken($params);
 
             Log::info($snapToken);
 
+            $midtransMethod = PaymentMethod::where('code', 'midtrans')->first();
+
             $payment->update([
                 'order_id' => $orderId,
                 'snap_token' => $snapToken,
+                'payment_method_id' => $midtransMethod ? $midtransMethod->id : $payment->payment_method_id,
             ]);
 
             return response()->json([
@@ -117,7 +120,6 @@ class PaymentController extends Controller
                 'order_id' => $orderId,
             ]);
         } catch (\Exception $e) {
-
             Log::error('MIDTRANS SNAP ERROR', [
                 'message' => $e->getMessage(),
             ]);
@@ -156,16 +158,13 @@ class PaymentController extends Controller
         DB::beginTransaction();
 
         try {
-
             $payment = Payment::where(
                 'order_id',
                 $notification->order_id
             )->first();
 
             if (!$payment) {
-
                 DB::rollBack();
-
                 return response()->json([
                     'message' => 'Payment tidak ditemukan.'
                 ], 404);
@@ -174,74 +173,57 @@ class PaymentController extends Controller
             $payment->transaction_id_midtrans = $notification->transaction_id;
             $payment->reference = $notification->transaction_id;
 
+            $midtransMethod = PaymentMethod::where('code', 'midtrans')->first();
+            if ($midtransMethod) {
+                $payment->payment_method_id = $midtransMethod->id;
+            }
+
             switch ($notification->transaction_status) {
-
                 case 'capture':
-
                     if ($notification->fraud_status == 'challenge') {
-
                         $payment->status = 'pending';
                     } else {
-
                         $payment->status = 'paid';
                         $payment->paid_at = now();
 
-                        // $payment->transaction->update([
-                        //     'status' => 'paid'
-                        // ]);
+                        if ($payment->transaction) {
+                            $payment->transaction->update([
+                                'status' => 'paid'
+                            ]);
+                        }
                     }
-
                     break;
 
                 case 'settlement':
-
                     $payment->status = 'paid';
                     $payment->paid_at = now();
 
-                    // $payment->transaction->update([
-                    //     'status' => 'paid'
-                    // ]);
-
+                    if ($payment->transaction) {
+                        $payment->transaction->update([
+                            'status' => 'paid'
+                        ]);
+                    }
                     break;
 
                 case 'pending':
-
                     $payment->status = 'pending';
-
-                    // $payment->transaction->update([
-                    //     'status' => 'pending'
-                    // ]);
-
+                    if ($payment->transaction) {
+                        $payment->transaction->update([
+                            'status' => 'pending'
+                        ]);
+                    }
                     break;
 
                 case 'expire':
-
-                    $payment->status = 'failed';
-
-                    $payment->transaction->update([
-                        'status' => 'cancelled'
-                    ]);
-
-                    break;
-
                 case 'deny':
-
-                    $payment->status = 'failed';
-
-                    $payment->transaction->update([
-                        'status' => 'cancelled'
-                    ]);
-
-                    break;
-
                 case 'cancel':
+                    $payment->status = ($notification->transaction_status === 'cancel') ? 'cancelled' : 'failed';
 
-                    $payment->status = 'cancelled';
-
-                    $payment->transaction->update([
-                        'status' => 'cancelled'
-                    ]);
-
+                    if ($payment->transaction) {
+                        $payment->transaction->update([
+                            'status' => 'cancelled'
+                        ]);
+                    }
                     break;
             }
 
@@ -253,7 +235,6 @@ class PaymentController extends Controller
                 'message' => 'OK'
             ]);
         } catch (\Throwable $e) {
-
             DB::rollBack();
 
             Log::error('MIDTRANS CALLBACK ERROR', [
@@ -295,6 +276,7 @@ class PaymentController extends Controller
             'data' => $transaction->fresh()->load([
                 'details.menu',
                 'payment',
+                'paymentMethod',
                 'user',
             ]),
         ]);

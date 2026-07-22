@@ -612,15 +612,17 @@ class TransactionController extends Controller
 
         foreach ($owners as $owner) {
 
-            FCMService::send(
-                $owner->fcm_token,
-                'Pesanan Baru',
-                'Ada pesanan baru dari ' . $transaction->customer_name,
-                [
-                    'type' => 'new_order',
-                    'transaction_id' => $transaction->id,
-                ]
-            );
+            NotificationHelper::send(
+            $owner,
+            'Pesanan Baru',
+            'Ada pesanan baru dari ' . $transaction->customer_name,
+            'transaction', // Set type 'transaction' (bukan 'new_order')
+            [
+                'transaction_id' => $transaction->id,
+                'status' => $transaction->status ?? 'pending',
+                'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+            ]
+        );
         }
     }
 }

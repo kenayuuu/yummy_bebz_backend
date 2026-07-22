@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Midtrans\Config;
 use Midtrans\Notification;
 use Midtrans\Snap;
+use Midtrans\Transaction as MidtransTransaction;
 use App\Helpers\NotificationHelper;
 
 class PaymentController extends Controller
@@ -95,15 +96,15 @@ class PaymentController extends Controller
                 'finish' => url('/payment/success'),
             ],
             'customer_details' => [
-                'first_name' => $transaction->user->name,
-                'email' => $transaction->user->email,
+                'first_name' => $transaction->user->name ?? 'Customer',
+                'email' => $transaction->user->email ?? 'customer@example.com',
             ],
         ];
 
         try {
             $snapToken = Snap::getSnapToken($params);
 
-            Log::info($snapToken);
+            Log::info("Snap Token Generated: " . $snapToken);
 
             $midtransMethod = PaymentMethod::where('code', 'midtrans')->first();
 
@@ -132,36 +133,99 @@ class PaymentController extends Controller
     }
 
     /**
-     * Callback Midtrans
+     * Endpoint untuk memverifikasi status pembayaran langsung dari Flutter
+     */
+    public function verifyStatus(Transaction $transaction)
+    {
+        if (
+            auth()->user()->role === 'customer' &&
+            $transaction->user_id !== auth()->id()
+        ) {
+            return response()->json([
+                'message' => 'Transaksi tidak ditemukan.'
+            ], 404);
+        }
+
+        $payment = $transaction->payment;
+
+        if (!$payment) {
+            return response()->json([
+                'message' => 'Data pembayaran tidak ditemukan.'
+            ], 404);
+        }
+
+        // Jika status sudah paid di DB
+        if ($payment->status === 'paid' || $transaction->status === 'paid') {
+            return response()->json([
+                'is_paid' => true,
+                'status' => 'paid',
+                'message' => 'Pembayaran telah terverifikasi.'
+            ]);
+        }
+
+        // Cek langsung status ke API Midtrans jika order_id tersedia
+        if ($payment->order_id) {
+            try {
+                $status = MidtransTransaction::status($payment->order_id);
+                $transactionStatus = $status->transaction_status ?? null;
+
+                if (in_array($transactionStatus, ['settlement', 'capture'])) {
+                    DB::transaction(function () use ($payment, $transaction) {
+                        $payment->update([
+                            'status' => 'paid',
+                            'paid_at' => now(),
+                        ]);
+                        $transaction->update([
+                            'status' => 'paid'
+                        ]);
+                    });
+
+                    return response()->json([
+                        'is_paid' => true,
+                        'status' => 'paid',
+                        'message' => 'Pembayaran berhasil dikonfirmasi.'
+                    ]);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Gagal verifikasi langsung ke Midtrans API: ' . $e->getMessage());
+            }
+        }
+
+        return response()->json([
+            'is_paid' => false,
+            'status' => $payment->status,
+            'message' => 'Pembayaran belum selesai.'
+        ]);
+    }
+
+    /**
+     * Webhook Callback Midtrans
      */
     public function notification(Request $request)
     {
         Log::info("===== MIDTRANS CALLBACK =====");
         Log::info($request->all());
 
-        $notification = new Notification();
-
-        $signature = hash(
-            'sha512',
-            $notification->order_id .
-                $notification->status_code .
-                $notification->gross_amount .
-                config('services.midtrans.serverKey')
-        );
-
-        if ($signature !== $notification->signature_key) {
-            return response()->json([
-                'message' => 'Invalid Signature'
-            ], 403);
-        }
-
-        DB::beginTransaction();
-
         try {
-            $payment = Payment::where(
-                'order_id',
-                $notification->order_id
-            )->first();
+            $notification = new Notification();
+
+            $signature = hash(
+                'sha512',
+                $notification->order_id .
+                    $notification->status_code .
+                    $notification->gross_amount .
+                    config('services.midtrans.serverKey')
+            );
+
+            if ($signature !== $notification->signature_key) {
+                return response()->json([
+                    'message' => 'Invalid Signature'
+                ], 403);
+            }
+
+            DB::beginTransaction();
+
+            $payment = Payment::where('order_id', $notification->order_id)->first();
 
             if (!$payment) {
                 DB::rollBack();
@@ -178,6 +242,8 @@ class PaymentController extends Controller
                 $payment->payment_method_id = $midtransMethod->id;
             }
 
+            $isPaidNow = false;
+
             switch ($notification->transaction_status) {
                 case 'capture':
                     if ($notification->fraud_status == 'challenge') {
@@ -185,11 +251,10 @@ class PaymentController extends Controller
                     } else {
                         $payment->status = 'paid';
                         $payment->paid_at = now();
+                        $isPaidNow = true;
 
                         if ($payment->transaction) {
-                            $payment->transaction->update([
-                                'status' => 'paid'
-                            ]);
+                            $payment->transaction->update(['status' => 'paid']);
                         }
                     }
                     break;
@@ -197,20 +262,17 @@ class PaymentController extends Controller
                 case 'settlement':
                     $payment->status = 'paid';
                     $payment->paid_at = now();
+                    $isPaidNow = true;
 
                     if ($payment->transaction) {
-                        $payment->transaction->update([
-                            'status' => 'paid'
-                        ]);
+                        $payment->transaction->update(['status' => 'paid']);
                     }
                     break;
 
                 case 'pending':
                     $payment->status = 'pending';
                     if ($payment->transaction) {
-                        $payment->transaction->update([
-                            'status' => 'pending'
-                        ]);
+                        $payment->transaction->update(['status' => 'pending']);
                     }
                     break;
 
@@ -220,20 +282,39 @@ class PaymentController extends Controller
                     $payment->status = ($notification->transaction_status === 'cancel') ? 'cancelled' : 'failed';
 
                     if ($payment->transaction) {
-                        $payment->transaction->update([
-                            'status' => 'cancelled'
-                        ]);
+                        $payment->transaction->update(['status' => 'cancelled']);
                     }
                     break;
             }
 
             $payment->save();
 
+            // Kirim notifikasi jika pembayaran baru saja lunas
+            // Kirim notifikasi HANYA jika pembayaran baru saja LUNAS (Paid)
+            if ($isPaidNow && $payment->transaction) {
+
+                // 1. Cari user yang memiliki role 'owner' atau 'admin'
+                $owners = \App\Models\User::whereIn('role', ['owner', 'admin'])->get();
+
+                // 2. Kirim notifikasi pesanan baru masuk ke semua Owner
+                foreach ($owners as $owner) {
+                    NotificationHelper::send(
+                        $owner,
+                        'Pesanan Baru Masuk!',
+                        'Ada pesanan baru dari ' . ($payment->transaction->user->name ?? 'Customer') . ' yang telah lunas dibayar.',
+                        'transaction',
+                        [
+                            'reference_id' => $payment->transaction->id,
+                            'transaction_id' => $payment->transaction->id,
+                            'status' => 'paid',
+                        ]
+                    );
+                }
+            }
+
             DB::commit();
 
-            return response()->json([
-                'message' => 'OK'
-            ]);
+            return response()->json(['message' => 'OK']);
         } catch (\Throwable $e) {
             DB::rollBack();
 
@@ -259,17 +340,19 @@ class PaymentController extends Controller
             'status' => 'paid',
         ]);
 
-        NotificationHelper::send(
-            $transaction->user,
-            'Pesanan Selesai',
-            'Terima kasih telah berbelanja di Yummy Bebz.',
-            'transaction',
-            [
-                'reference_id' => $transaction->id,
-                'transaction_id' => $transaction->id,
-                'status' => 'paid',
-            ]
-        );
+        if ($transaction->user) {
+            NotificationHelper::send(
+                $transaction->user,
+                'Pesanan Selesai',
+                'Terima kasih telah berbelanja di Yummy Bebz.',
+                'transaction',
+                [
+                    'reference_id' => $transaction->id,
+                    'transaction_id' => $transaction->id,
+                    'status' => 'paid',
+                ]
+            );
+        }
 
         return response()->json([
             'message' => 'Pesanan selesai.',

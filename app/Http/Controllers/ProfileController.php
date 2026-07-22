@@ -68,7 +68,7 @@ class ProfileController extends Controller
 
     public function getPublicProfile($id)
     {
-        // Cari user berdasarkan ID, jika tidak ada kirim error 404
+        // Cari user berdasarkan id
         $user = User::find($id);
 
         if (!$user) {
@@ -77,12 +77,11 @@ class ProfileController extends Controller
             ], 404);
         }
 
-        // Kembalikan data yang dibutuhkan saja
         return response()->json([
             'id' => $user->id,
             'name' => $user->name,
             'role' => $user->role,
-            'profil' => $user->profil, // URL foto profil owner dari database
+            'profil' => $user->profil, // Url foto profil owner dari database
         ], 200);
     }
 }

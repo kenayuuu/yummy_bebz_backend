@@ -26,6 +26,11 @@ class TransactionController extends Controller
 
         if ($user->role === 'customer') {
             $query->where('user_id', $user->id);
+        } else {
+            $query->where(function ($q) {
+                $q->where('payment_method_id', 1)
+                    ->orWhere('status', 'paid');
+            });
         }
 
         $transactions = $query
@@ -34,7 +39,6 @@ class TransactionController extends Controller
 
         return response()->json($transactions);
     }
-
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -613,16 +617,16 @@ class TransactionController extends Controller
         foreach ($owners as $owner) {
 
             NotificationHelper::send(
-            $owner,
-            'Pesanan Baru',
-            'Ada pesanan baru dari ' . $transaction->customer_name,
-            'transaction', // Set type 'transaction' (bukan 'new_order')
-            [
-                'transaction_id' => $transaction->id,
-                'status' => $transaction->status ?? 'pending',
-                'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
-            ]
-        );
+                $owner,
+                'Pesanan Baru',
+                'Ada pesanan baru dari ' . $transaction->customer_name,
+                'transaction', 
+                [
+                    'transaction_id' => $transaction->id,
+                    'status' => $transaction->status ?? 'pending',
+                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK',
+                ]
+            );
         }
     }
 }

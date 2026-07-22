@@ -10,7 +10,7 @@ class Payment extends Model
     protected $fillable = [
         'user_id',
         'transaction_id',
-        'metode_pembayaran',
+        'payment_method_id',
         'amount',
         'status',
         'reference',
@@ -36,5 +36,9 @@ class Payment extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+    public function paymentMethod(): BelongsTo
+    {
+        return $this->belongsTo(PaymentMethod::class, 'payment_method_id');
     }
 }

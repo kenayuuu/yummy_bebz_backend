@@ -18,13 +18,13 @@ return new class extends Migration
                 ->references('id')
                 ->on('users')
                 ->nullOnDelete();
-            $table->string('customer_name')->nullable();
+            $table->string('customer_name', 100)->nullable();
             $table->unsignedInteger('cart_id')->nullable();
             $table->foreign('cart_id')
                 ->references('id')
                 ->on('carts')
                 ->nullOnDelete();
-            $table->string('name', 20)->nullable();
+            $table->string('name', 100)->nullable();
             $table->date('tanggal');
             $table->enum('status', [
                 'pending',
@@ -38,7 +38,7 @@ return new class extends Migration
             $table->foreign('payment_method_id')
                 ->references('id')
                 ->on('payment_methods')
-                ->nullOnDelete(); 
+                ->nullOnDelete();
             $table->unsignedInteger('total_jumlah')->default(0);
             $table->decimal('total_harga', 12, 2)->default(0);
             $table->decimal('total_keuntungan', 12, 2)->default(0);

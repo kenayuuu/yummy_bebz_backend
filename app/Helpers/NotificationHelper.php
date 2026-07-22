@@ -24,10 +24,6 @@ class NotificationHelper
         ?string $type = null,
         array $data = []
     ): void {
-
-        // ==========================
-        // Simpan ke database
-        // ==========================
         Notification::create([
             'user_id' => $receiver->id,
             'title' => $title,
@@ -37,9 +33,6 @@ class NotificationHelper
             'is_read' => false,
         ]);
 
-        // ==========================
-        // Tidak punya token FCM
-        // ==========================
         if (empty($receiver->fcm_token)) {
             return;
         }

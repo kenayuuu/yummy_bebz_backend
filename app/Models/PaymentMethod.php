@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Model;
 
 class PaymentMethod extends Model
@@ -12,8 +13,20 @@ class PaymentMethod extends Model
         'is_active',
     ];
 
-    public function transactions()
+    protected function casts(): array
     {
-        return $this->hasMany(Transaction::class);
+        return [
+            'is_active' => 'boolean',
+        ];
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'payment_method_id');
+    }
+
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class, 'payment_method_id');
     }
 }

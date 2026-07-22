@@ -16,12 +16,12 @@ return new class extends Migration
             $table->string('name', 150);
             $table->string('email', 100)->unique();
             $table->timestamp('email_verified_at')->nullable();
-            $table->string('password', 255);
+            $table->string('password', 100);
             $table->string('reset_otp', 6)->nullable();
             $table->timestamp('reset_otp_expired_at')->nullable();
             $table->string('role', 10)->default('customer');
             $table->text('alamat')->nullable();
-            $table->string('no_hp', 20)->nullable();
+            $table->string('no_hp', 15)->nullable();
             $table->string('profil', 200)->nullable();
             $table->string('fcm_token', 150)->nullable();
             $table->rememberToken();
